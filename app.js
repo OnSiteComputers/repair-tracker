@@ -291,9 +291,13 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     ));
     var wrap = el('<div class="swrap"></div>');
     var updated = el('<div class="supdated"></div>');
+    var toolRow = el('<div class="stoolrow"></div>');
     var sInput = el('<input class="ssearch" placeholder="Search your name or device…" />');
+    var sortBtn = el('<button class="ssort" data-statussort="1"></button>');
+    toolRow.appendChild(sInput);
+    toolRow.appendChild(sortBtn);
     var listWrap = el('<div class="scards"></div>');
-    wrap.appendChild(sInput);
+    wrap.appendChild(toolRow);
     wrap.appendChild(updated);
     wrap.appendChild(listWrap);
     page.appendChild(wrap);
@@ -301,6 +305,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     var soBtn = page.querySelector("[data-signout]");
     if (soBtn) soBtn.addEventListener("click", function () { window.__RT.mgmt.signOut(); });
+
+    function syncSortBtn() {
+      sortBtn.textContent = state.dateSortDir === "asc" ? "Oldest first ↑" : "Newest first ↓";
+    }
+    syncSortBtn();
+    sortBtn.addEventListener("click", function () {
+      state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+      syncSortBtn();
+      paint();
+    });
 
     var q = "";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
@@ -311,12 +325,13 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         if (!q) return true;
         return (r.customerName + " " + r.device + " " + r.brandModel).toLowerCase().indexOf(q) !== -1;
       });
-      // sort: ready for pickup first, then by check-in date
+      // ready for pickup floats to top; date order below it follows the toggle
+      var dir = state.dateSortDir === "asc" ? -1 : 1;
       rows.sort(function (a, b) {
         var ra = a.status === "Ready for Pickup" ? 0 : 1;
         var rb = b.status === "Ready for Pickup" ? 0 : 1;
         if (ra !== rb) return ra - rb;
-        return (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+        return (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "") * dir;
       });
       listWrap.innerHTML = "";
       if (rows.length === 0) {
