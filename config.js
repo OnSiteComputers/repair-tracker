@@ -16,5 +16,5 @@ window.REPAIR_TRACKER_CONFIG = {
   // 2) Your Supabase browser key — the "Publishable key"
   //    (Project Settings -> API Keys -> Publishable and secret API keys).
   //    Starts with sb_publishable_...  This is safe to be public.
-  SUPABASE_ANON_KEY: "PASTE_YOUR_PUBLISHABLE_KEY_HERE",
+  SUPABASE_ANON_KEY: "sb_publishable_0SQO7uLgTRCnx9jA5CmulQ_u9GUelLl",
 };
