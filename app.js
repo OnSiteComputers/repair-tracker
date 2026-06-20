@@ -254,6 +254,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       if (res.error) throw res.error; return true;
     });
   }
+  function clearSearchAndFilter() {
+    state.search = "";
+    state.statusFilter = "All";
+  }
 
   // =====================================================================
   // STATUS PAGE (Linda) — read-only, auto-refresh
@@ -399,19 +403,33 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     var wrap = el('<div class="wrap"></div>');
 
-    // stat cards (active view only)
+    // stat cards (active view only) — clickable to filter
     if (state.view === "active") {
-      var ready = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
-      var waiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
-      var picked = active.filter(function (r) { return r.status === "Picked Up"; }).length;
-      wrap.appendChild(el(
+      var cCheckedIn = active.filter(function (r) { return r.status === "Checked In"; }).length;
+      var cDiagnosed = active.filter(function (r) { return r.status === "Diagnosed"; }).length;
+      var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
+      var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
+      var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
+      var statsEl = el(
         '<div class="stats">' +
-          statCard(active.length, "Active repairs", "#3B5BA5") +
-          statCard(ready, "Ready for pickup", "#2FA82F") +
-          statCard(waiting, "Waiting on parts", "#E07B39") +
-          statCard(picked, "Picked up", "#999999") +
+          statCard(active.length, "Active repairs", "#3B5BA5", "All") +
+          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+          statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
+          statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
+          statCard(cInRepair, "In repair", "#5E9A4B", "In Repair") +
+          statCard(cReady, "Ready for pickup", "#2FA82F", "Ready for Pickup") +
         "</div>"
-      ));
+      );
+      statsEl.querySelectorAll(".stat").forEach(function (c) {
+        var f = c.getAttribute("data-filter");
+        if (state.statusFilter === f) c.classList.add("active");
+        c.addEventListener("click", function () {
+          // toggle: clicking the already-active card clears back to All
+          state.statusFilter = (state.statusFilter === f && f !== "All") ? "All" : f;
+          renderApp();
+        });
+      });
+      wrap.appendChild(statsEl);
     }
 
     // toolbar
@@ -421,7 +439,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var search = el('<input class="search" placeholder="Search name, phone, device, problem…" />');
     search.value = state.search;
     search.addEventListener("input", function () { state.search = search.value; paintTable(); });
-    tleft.appendChild(search);
+    var searchBox = el('<div class="searchbox"></div>');
+    searchBox.appendChild(search);
+    var clearX = el('<button class="search-x" title="Clear search" type="button">✕</button>');
+    clearX.style.display = state.search ? "block" : "none";
+    clearX.addEventListener("click", function () {
+      state.search = ""; search.value = ""; clearX.style.display = "none"; paintTable(); search.focus();
+    });
+    search.addEventListener("input", function () { clearX.style.display = search.value ? "block" : "none"; });
+    searchBox.appendChild(clearX);
+    tleft.appendChild(searchBox);
     if (state.view === "active") {
       var filter = el('<select class="filter"></select>');
       filter.appendChild(el('<option>All</option>'));
@@ -453,8 +480,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     paintTable();
   }
 
-  function statCard(v, l, accent) {
-    return '<div class="stat"><div class="b" style="background:' + accent + '"></div>' +
+  function statCard(v, l, accent, filter) {
+    return '<div class="stat"' + (filter != null ? ' data-filter="' + esc(filter) + '"' : "") + '>' +
+      '<div class="b" style="background:' + accent + '"></div>' +
       '<div class="v">' + v + '</div><div class="l">' + esc(l) + "</div></div>";
   }
 
@@ -577,7 +605,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   // expose for form module
   window.__RT.mgmt = {
     state: state, toast: toast, loadRepairs: loadRepairs, saveRepair: saveRepair,
-    deleteRepair: deleteRepair, renderApp: renderApp,
+    deleteRepair: deleteRepair, renderApp: renderApp, clearSearchAndFilter: clearSearchAndFilter,
   };
 
   // ---------- login (real Supabase Auth: email + password) ----------
@@ -865,6 +893,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     save.addEventListener("click", function () {
       save.disabled = true; save.textContent = "Saving…";
       M.saveRepair(r).then(M.loadRepairs).then(function () {
+        // After adding a new repair, clear any leftover search/filter so it's visible
+        if (isNew) M.clearSearchAndFilter();
         M.toast(isNew ? "Repair added" : "Repair updated"); close(); M.renderApp();
       }).catch(function (e) {
         save.disabled = false; save.textContent = isNew ? "Add repair" : "Save changes";
