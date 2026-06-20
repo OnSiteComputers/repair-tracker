@@ -916,12 +916,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // Header: logo left, wordmark center, phone + web right
     var head =
       '<div class="dh">' +
-        '<div class="dh-logo">' + logoImg(112) + "</div>" +
+        '<div class="dh-logo">' + logoImg(120) + "</div>" +
         '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
-        '<div class="dh-contact">' +
-          '<div class="dh-phone">' + esc(SHOP.phone) + "</div>" +
-          '<div class="dh-web">' + esc(SHOP.web) + "</div>" +
-        "</div>" +
+        '<div class="dh-line">' + esc(SHOP.address) + " &middot; " + esc(SHOP.cityzip) + "</div>" +
+        '<div class="dh-line">' + esc(SHOP.phone) + " &middot; " + esc(SHOP.web) + "</div>" +
       "</div>" +
       '<div class="dh-title">' + esc(titleMap[type]) + "</div>";
 
@@ -1049,11 +1047,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
       "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
       // ----- header -----
-      ".dh{display:flex;align-items:center;gap:14px;padding-bottom:6px}" +
-      ".dh-logo{flex:0 0 auto}" +
-      ".dh-name{flex:1;text-align:center;font-family:Arial,Helvetica,'Inter',sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;letter-spacing:-.02em;white-space:nowrap}" +
-      ".dh-contact{flex:0 0 auto;text-align:right;font-size:13px}" +
-      ".dh-phone{font-weight:600}.dh-web{color:#555;margin-top:2px;font-size:12px}" +
+      ".dh{text-align:center;padding-bottom:6px}" +
+      ".dh-logo{margin-bottom:2px}" +
+      ".dh-logo img{display:inline-block!important}" +
+      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:30px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;white-space:nowrap}" +
+      ".dh-line{font-size:12.5px;color:#555;margin-top:3px}" +
       ".dh-title{text-align:center;font-size:20px;font-weight:700;letter-spacing:.06em;padding:8px 0;margin:6px 0 14px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
       // ----- field rows -----
       ".drow{display:flex;gap:36px;margin-bottom:14px}" +
