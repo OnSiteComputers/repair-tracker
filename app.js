@@ -20,6 +20,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     web: "www.onsitecomputerservice.net",
     tagline: "Your Computer's Doctor",
     diagFee: 129,
+    apptFee: 25,
     taxRate: 0.07,
   };
 
@@ -38,8 +39,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var CONTACT_PREF = ["Call", "Text", "Email"];
   var BACKUP_STATUS = ["Confirms backed up", "Requests backup service", "Declines backup"];
   var YESNO = ["Yes", "No"];
+  var INTAKE_TYPES = ["Appointment", "Walk-in"];
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
-  var DOC_TYPES = ["Service Order", "Quote", "Receipt", "Diagnostic Receipt", "Label"];
+  var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Label"];
 
   // ---------- DB column map (snake_case in Supabase) ----------
   // app field  ->  db column
@@ -60,10 +62,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     backupStatus: "backup_status",
     problem: "problem",
     status: "status",
+    intakeType: "intake_type",
     waitingOnParts: "waiting_on_parts",
     readyForPickup: "ready_for_pickup",
     estimatedCost: "estimated_cost",
     diagnosticFindings: "diagnostic_findings",
+    workPerformed: "work_performed",
     diagnosticFeePaid: "diagnostic_fee_paid",
     partsAmount: "parts_amount",
     laborAmount: "labor_amount",
@@ -106,10 +110,42 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   }
   function computeTotals(r) {
     var parts = num(r.partsAmount), labor = num(r.laborAmount);
-    var diag = r.diagnosticFeePaid === "Yes" ? 0 : SHOP.diagFee;
-    var subtotal = parts + labor + diag;
-    var tax = Math.round(subtotal * SHOP.taxRate * 100) / 100;
-    return { parts: parts, labor: labor, diag: diag, subtotal: subtotal, tax: tax, total: subtotal + tax };
+    var rate = SHOP.taxRate;
+    var rnd = function (n) { return Math.round(n * 100) / 100; };
+
+    // ----- Diagnostic fee (taxable) -----
+    var diagFee = SHOP.diagFee;                     // 129
+    var diagTax = rnd(diagFee * rate);              // 9.03
+    var diagTotal = rnd(diagFee + diagTax);         // 138.03  (full taxed diagnostic)
+
+    // ----- Appointment fee (NOT taxable) -----
+    var isAppt = (r.intakeType === "Appointment");
+    var apptFee = isAppt ? SHOP.apptFee : 0;        // 25 or 0
+
+    // ----- Drop-off: amount due today -----
+    // diagnostic (taxed) minus any appointment fee already prepaid
+    var dropDue = rnd(diagTotal - apptFee);         // appt: 113.03 / walk-in: 138.03
+
+    // ----- Final receipt: parts & labor taxed, minus full diagnostic already paid -----
+    var plSubtotal = rnd(parts + labor);
+    var plTax = rnd(plSubtotal * rate);
+    var plWithTax = rnd(plSubtotal + plTax);
+    var diagCredit = diagTotal;                     // 138.03 credited at pickup
+    var finalDue = rnd(plWithTax - diagCredit);
+
+    return {
+      parts: parts, labor: labor,
+      // legacy fields kept for Quote/other docs
+      diag: r.diagnosticFeePaid === "Yes" ? 0 : diagFee,
+      subtotal: rnd(parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
+      tax: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * rate),
+      total: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * (1 + rate)),
+      // new fee model
+      diagFee: diagFee, diagTax: diagTax, diagTotal: diagTotal,
+      isAppt: isAppt, apptFee: apptFee, dropDue: dropDue,
+      plSubtotal: plSubtotal, plTax: plTax, plWithTax: plWithTax,
+      diagCredit: diagCredit, finalDue: finalDue,
+    };
   }
   function esc(s) {
     return String(s == null ? "" : s)
@@ -162,7 +198,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   window.__RT = {
     SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE,
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
-    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES,
+    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
@@ -639,7 +675,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   "use strict";
   var R = window.__RT;
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
-  var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES;
+  var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, logoImg = R.logoImg;
   var M = R.mgmt;
@@ -701,11 +737,15 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       section("Problem & status",
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
         frow(
-          fld("Current status", sel("status", STATUSES, r.status)) +
+          fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
+          fld("Current status", sel("status", STATUSES, r.status))
+        ) +
+        frow(
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts)) +
           fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
         ) +
-        frow(fld("Diagnostic findings / work performed", ta("diagnosticFindings", r.diagnosticFindings, 4), "full"))
+        frow(fld("Diagnostic findings (screen only — not printed)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
+        frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
       section("Charges",
         frow(
@@ -725,7 +765,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     body.querySelectorAll("[data-k]").forEach(function (node) {
       node.addEventListener("input", function () {
         r[node.getAttribute("data-k")] = node.value;
-        if (["partsAmount", "laborAmount", "diagnosticFeePaid"].indexOf(node.getAttribute("data-k")) !== -1)
+        if (["partsAmount", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
           paintTotals();
       });
       node.addEventListener("change", function () {
@@ -910,10 +950,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // ===== Standard documents (match the Service Order template) =====
     var titleMap = {
       "Service Order": "SERVICE ORDER", "Quote": "QUOTE",
-      "Receipt": "RECEIPT", "Diagnostic Receipt": "DIAGNOSTIC RECEIPT",
+      "Drop-Off Receipt": "DIAGNOSTIC DROP-OFF RECEIPT", "Final Receipt": "SALES RECEIPT",
+      "Diagnostic Receipt": "DIAGNOSTIC RECEIPT",
     };
 
-    // Header: logo left, wordmark center, phone + web right
+    // Compact header (shared)
     var head =
       '<div class="dh">' +
         '<div class="dh-logo">' + logoImg(78) + "</div>" +
@@ -922,8 +963,95 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) +
             "  &middot;  " + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
         "</div>" +
-      "</div>" +
-      '<div class="dh-title">' + esc(titleMap[type]) + "</div>";
+      "</div>";
+
+    // ===== RECEIPTS (QuickBooks-style) — shared header pieces =====
+    if (type === "Drop-Off Receipt" || type === "Final Receipt") {
+      var saleNo = (r.id || "------").slice(-6).toUpperCase();
+      var soldTo =
+        '<div class="rsold">' +
+          '<div class="rsold-h">Sold To</div>' +
+          '<div class="rsold-b">' + esc(r.customerName || "") +
+            (r.address ? "<br>" + esc(r.address) : "") +
+            (r.cityStateZip ? "<br>" + esc(r.cityStateZip) : "") +
+            (r.phone ? "<br>" + esc(r.phone) : "") + "</div>" +
+        "</div>";
+      var metaTbl =
+        '<table class="rmeta"><tbody>' +
+          "<tr><td>Date</td><td>Sale No.</td></tr>" +
+          '<tr class="v"><td>' + esc(fmtDate(today)) + "</td><td>" + esc(saleNo) + "</td></tr>" +
+          '<tr><td colspan="2" class="pm">Payment Method</td></tr>' +
+          '<tr class="v"><td colspan="2">' + esc(r.paymentMethod || "") + "</td></tr>" +
+        "</tbody></table>";
+      var rtop = '<div class="rtop">' + soldTo + metaTbl + "</div>";
+
+      var rrev = "";
+      if (window.__RT_REVIEW_QR) {
+        rrev =
+          '<div class="drev">' +
+            '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
+            '<div class="drev-txt">' +
+              '<div class="drev-h">Enjoyed our service?</div>' +
+              '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
+            "</div>" +
+          "</div>";
+      }
+      var thanks =
+        '<div class="dthx">Thank you for your business!</div>' +
+        '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
+
+      // ---------- DROP-OFF RECEIPT ----------
+      if (type === "Drop-Off Receipt") {
+        var dItem =
+          '<table class="ritem"><thead><tr>' +
+            '<th class="d">Description</th><th class="a">Amount</th>' +
+          "</tr></thead><tbody>" +
+            '<tr><td class="d"><b>Diagnostic Service Fee</b>' +
+              '<div class="rdesc">Diagnostic of ' + esc(r.device || "device") +
+              (r.brandModel ? " (" + esc(r.brandModel) + ")" : "") +
+              ". Credited toward repair if you proceed.</div>" +
+            '</td><td class="a">' + money(t.diagFee) + "</td></tr>" +
+          "</tbody></table>";
+        var dTotRows =
+          '<tr><td class="l">Diagnostic Fee</td><td class="a">' + money(t.diagFee) + "</td></tr>" +
+          '<tr><td class="l">Sales Tax (7%)</td><td class="a">' + money(t.diagTax) + "</td></tr>";
+        if (t.isAppt) {
+          dTotRows +=
+            '<tr><td class="l">Less Appointment Fee Paid</td><td class="a">&minus;' + money(t.apptFee) + "</td></tr>";
+        }
+        dTotRows +=
+          '<tr class="grand"><td class="l">Amount Due Today</td><td class="a">' + money(t.dropDue) + "</td></tr>";
+        var dTot = '<table class="rtot"><tbody>' + dTotRows + "</tbody></table>";
+
+        return head +
+          '<div class="dh-title">DIAGNOSTIC DROP-OFF RECEIPT</div>' +
+          rtop + dItem + dTot + rrev + thanks;
+      }
+
+      // ---------- FINAL RECEIPT ----------
+      var fItem =
+        '<table class="ritem"><thead><tr>' +
+          '<th class="d">Description</th><th class="a">Amount</th>' +
+        "</tr></thead><tbody>" +
+          '<tr><td class="d"><b>Parts &amp; Labor</b>' +
+            (r.workPerformed ? '<div class="rdesc">' + esc(r.workPerformed) + "</div>" : "") +
+          '</td><td class="a">' + money(t.plSubtotal) + "</td></tr>" +
+        "</tbody></table>";
+      var fTot =
+        '<table class="rtot"><tbody>' +
+          '<tr><td class="l">Subtotal</td><td class="a">' + money(t.plSubtotal) + "</td></tr>" +
+          '<tr><td class="l">Sales Tax (7%)</td><td class="a">' + money(t.plTax) + "</td></tr>" +
+          '<tr><td class="l">Less Diagnostic Fee Paid</td><td class="a">&minus;' + money(t.diagCredit) + "</td></tr>" +
+          '<tr class="grand"><td class="l">Total Due</td><td class="a">' + money(t.finalDue) + "</td></tr>" +
+        "</tbody></table>";
+
+      return head +
+        '<div class="dh-title">SALES RECEIPT</div>' +
+        rtop + fItem + fTot + rrev + thanks;
+    }
+
+    // Title bar for the remaining standard documents
+    head += '<div class="dh-title">' + esc(titleMap[type]) + "</div>";
 
     // Two-column underlined field rows (label bold inline)
     function f(label, val) {
@@ -953,15 +1081,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     if (type === "Service Order") {
       middle = sech("DESCRIPTION OF ISSUE / REQUESTED SERVICE") +
         '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
-    } else if (type === "Receipt") {
-      middle = sech("DESCRIPTION OF WORK PERFORMED") +
-        '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
     } else if (type === "Diagnostic Receipt") {
-      middle = sech("DIAGNOSTIC FINDINGS") +
-        '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
+      middle = sech("WORK PERFORMED") +
+        '<div class="dbx">' + (r.workPerformed ? esc(r.workPerformed) : "") + "</div>";
     } else if (type === "Quote") {
       middle = sech("SCOPE OF WORK") +
-        '<div class="dbx">' + (r.problem || r.diagnosticFindings ? esc(r.problem || r.diagnosticFindings) : "") + "</div>";
+        '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
     }
 
     // Money strip + signatures
@@ -999,11 +1124,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         (r.paymentMethod ? '<div class="dpay">Payment method: ' + esc(r.paymentMethod) + "</div>" : "") +
         sign;
     } else {
-      // Receipt or Quote — itemized Parts + Labor + Diagnostic + Tax
-      var isQuote = type === "Quote";
-      var totLabel = isQuote ? "ESTIMATED TOTAL" : "TOTAL PAID";
+      // Quote — itemized Parts + Labor + Diagnostic + Tax
       charges =
-        sech(isQuote ? "ESTIMATE" : "PAYMENT") +
+        sech("ESTIMATE") +
         '<table class="ditem"><tbody>' +
           '<tr><td>Parts</td><td class="amt">' + money(t.parts) + "</td></tr>" +
           '<tr><td>Labor</td><td class="amt">' + money(t.labor) + "</td></tr>" +
@@ -1011,16 +1134,15 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           '<tr><td>Subtotal</td><td class="amt">' + money(t.subtotal) + "</td></tr>" +
           '<tr><td>Sales Tax (7%)</td><td class="amt">' + money(t.tax) + "</td></tr>" +
         "</tbody></table>" +
-        '<div class="dstrip">' + totLabel + ": " + money(t.total) + "</div>" +
-        (!isQuote && r.paymentMethod ? '<div class="dpay">Payment method: ' + esc(r.paymentMethod) + "</div>" : "") +
-        (isQuote ? '<div class="dnote">This quote is valid for 30 days. The $' + SHOP.diagFee +
-          ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>" : "") +
+        '<div class="dstrip">ESTIMATED TOTAL: ' + money(t.total) + "</div>" +
+        '<div class="dnote">This quote is valid for 30 days. The $' + SHOP.diagFee +
+          ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>" +
         sign;
     }
 
-    // Footer — thank-you + questions (Receipt shows both; other docs show thank-you)
+    // Footer — Diagnostic Receipt shows review+thanks; others just thanks
     var reviewBlock = "";
-    if (type === "Receipt" && window.__RT_REVIEW_QR) {
+    if (type === "Diagnostic Receipt" && window.__RT_REVIEW_QR) {
       reviewBlock =
         '<div class="drev">' +
           '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
@@ -1031,7 +1153,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         "</div>";
     }
     var footer = "";
-    if (type === "Receipt" || type === "Diagnostic Receipt") {
+    if (type === "Diagnostic Receipt") {
       footer = reviewBlock +
         '<div class="dthx">Thank you for choosing ' + esc(SHOP.name) + " — your computer\u2019s doctor!</div>" +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
@@ -1084,6 +1206,25 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ".dq{text-align:center;font-style:italic;font-size:11px;color:#999;margin-top:4px}" +
       ".drev{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:14px;padding:10px 16px;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3}" +
       ".drev-qr{width:82px;height:82px;flex:0 0 auto}" +
+      // ----- QuickBooks-style receipt -----
+      ".rtop{display:flex;justify-content:space-between;gap:18px;margin-bottom:14px;align-items:flex-start}" +
+      ".rsold{flex:0 0 290px;border:1px solid #0B0B0C}" +
+      ".rsold-h{background:#1A2E5A;color:#fff;font-weight:700;font-size:12px;padding:4px 10px}" +
+      ".rsold-b{padding:8px 10px;font-size:13px;line-height:1.55}" +
+      ".rmeta{border-collapse:collapse;font-size:12px;flex:0 0 auto;margin-left:auto}" +
+      ".rmeta td{border:1px solid #0B0B0C;padding:5px 0;text-align:center;font-weight:700;background:#EEF1F7;width:120px}" +
+      ".rmeta tr.v td{background:#fff;font-weight:400}" +
+      ".rmeta td.pm{background:#EEF1F7;font-weight:700}" +
+      ".ritem{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}" +
+      ".ritem th{background:#1A2E5A;color:#fff;font-size:11.5px;font-weight:700;padding:5px 10px;text-align:left}" +
+      ".ritem th.a{text-align:right}" +
+      ".ritem td{border:1px solid #ccc;border-top:0;padding:8px 10px;vertical-align:top}" +
+      ".ritem td.a{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;width:120px}" +
+      ".rdesc{font-size:12px;color:#444;margin-top:4px;line-height:1.45;white-space:pre-wrap}" +
+      ".rtot{margin-left:auto;border-collapse:collapse;font-size:13px;min-width:260px;margin-bottom:8px}" +
+      ".rtot td{padding:5px 10px}" +
+      ".rtot td.l{font-weight:700}.rtot td.a{text-align:right;font-variant-numeric:tabular-nums}" +
+      ".rtot tr.grand td{border-top:2px solid #1A2E5A;font-size:17px;font-weight:700;color:#1A2E5A;padding-top:8px}" +
       ".drev-txt{text-align:left}" +
       ".drev-h{font-size:16px;font-weight:700;color:#1A2E5A}" +
       ".drev-s{font-size:12.5px;color:#555;margin-top:3px;max-width:240px;line-height:1.4}" +
