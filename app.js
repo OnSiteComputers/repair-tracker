@@ -1015,7 +1015,18 @@ window.__RT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcwAAAHYCAYAAA
         sign;
     }
 
-    return head + customer + device + middle + charges;
+    // Footer — thank-you + questions (Receipt shows both; other docs show thank-you)
+    var footer = "";
+    if (type === "Receipt" || type === "Diagnostic Receipt") {
+      footer =
+        '<div class="dthx">Thank you for choosing ' + esc(SHOP.name) + " — your computer\u2019s doctor!</div>" +
+        '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
+    } else {
+      footer =
+        '<div class="dthx">Thank you for choosing ' + esc(SHOP.name) + " — your computer\u2019s doctor!</div>";
+    }
+
+    return head + customer + device + middle + charges + footer;
   }
 
   function printCSS() {
@@ -1024,9 +1035,9 @@ window.__RT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcwAAAHYCAYAAA
     return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
       "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
       // ----- header -----
-      ".dh{display:flex;align-items:center;gap:16px;padding-bottom:6px}" +
+      ".dh{display:flex;align-items:center;gap:14px;padding-bottom:6px}" +
       ".dh-logo{flex:0 0 auto}" +
-      ".dh-name{flex:1;text-align:center;font-family:'Playfair Display',Georgia,serif;font-size:27px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em}" +
+      ".dh-name{flex:1;text-align:center;font-family:Arial,Helvetica,'Inter',sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;letter-spacing:-.02em;white-space:nowrap}" +
       ".dh-contact{flex:0 0 auto;text-align:right;font-size:13px}" +
       ".dh-phone{font-weight:600}.dh-web{color:#555;margin-top:2px;font-size:12px}" +
       ".dh-title{text-align:center;font-size:20px;font-weight:700;letter-spacing:.06em;padding:8px 0;margin:6px 0 14px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
@@ -1054,6 +1065,8 @@ window.__RT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcwAAAHYCAYAAA
       // ----- signature -----
       ".dsig{margin-top:24px}" +
       ".dsig-c{display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;border-top:1px solid #0B0B0C;padding-top:6px}" +
+      ".dthx{margin-top:22px;text-align:center;font-family:'Playfair Display',Georgia,serif;font-style:italic;font-weight:700;font-size:15px;color:#1A2E5A}" +
+      ".dq{text-align:center;font-style:italic;font-size:11.5px;color:#999;margin-top:6px}" +
       // ----- label styles (print) -----
       ".lbl-wrap{display:flex;flex-direction:column;gap:18px}" +
       ".lbl-hint{font-size:11px;color:#999;text-align:center;margin-bottom:4px}" +
@@ -1081,5 +1094,4 @@ window.__RT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcwAAAHYCAYAAA
   window.openDoc = openDoc;
 })();
 
-/* ---- start the app ---- */
 window.__RT.boot();
