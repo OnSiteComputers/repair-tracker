@@ -43,8 +43,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
-  // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
-  var WORKING_STATES = ["Checked In", "Diagnosed", "Waiting on Parts", "In Repair"];
   var BRANDS = ["Dell", "HP", "Lenovo", "ASUS", "Acer", "Apple", "MSI", "Microsoft Surface",
     "Samsung", "Toshiba", "Sony", "LG", "Razer", "Gigabyte", "Alienware", "Custom Build"];
   // Concord + surrounding Cabarrus / Charlotte-metro cities and zips
@@ -219,7 +217,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
     PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
     DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
-    WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
@@ -233,7 +230,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var SHOP = R.SHOP, STATUSES = R.STATUSES, STATUS_STYLE = R.STATUS_STYLE;
   var CONTACT_PREF = R.CONTACT_PREF, BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO;
   var PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES;
-  var WORKING_STATES = R.WORKING_STATES;
   var toRow = R.toRow, fromRow = R.fromRow, blankRepair = R.blankRepair;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG;
@@ -320,10 +316,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
-      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       statsHost.innerHTML =
         '<div class="stats">' +
-          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
+          statCard(active.length, "Active repairs", "#3B5BA5", "All") +
           statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
@@ -357,8 +352,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var active = state.repairs.filter(function (r) { return !r.completed; });
       paintStats(active);
       var rows = active.filter(function (r) {
-        if (statusFilter === "Active") { if (R.WORKING_STATES.indexOf(r.status) === -1) return false; }
-        else if (statusFilter !== "All") { if (r.status !== statusFilter) return false; }
+        if (statusFilter !== "All" && r.status !== statusFilter) return false;
         if (!q) return true;
         return (r.customerName + " " + r.device + " " + r.brandModel).toLowerCase().indexOf(q) !== -1;
       });
@@ -372,9 +366,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       });
       listWrap.innerHTML = "";
       if (rows.length === 0) {
-        var label = statusFilter === "Active" ? "in progress" : "“" + esc(statusFilter) + "”";
         var msg = q ? "No repairs match that search."
-          : (statusFilter !== "All" ? "No repairs " + label + " right now."
+          : (statusFilter !== "All" ? "No repairs in “" + esc(statusFilter) + "” right now."
           : "No active repairs right now.");
         listWrap.appendChild(el('<div class="sempty">' + msg + "</div>"));
         return;
@@ -484,11 +477,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
-      // "Active" = work-in-progress only; Ready for Pickup is done, counted separately
-      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       var statsEl = el(
         '<div class="stats">' +
-          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
+          statCard(active.length, "Active repairs", "#3B5BA5", "All") +
           statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
@@ -571,10 +562,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var rows = list.filter(function (r) {
       var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem]
         .join(" ").toLowerCase().indexOf(q) !== -1;
-      var mf;
-      if (!isActive || state.statusFilter === "All") mf = true;
-      else if (state.statusFilter === "Active") mf = WORKING_STATES.indexOf(r.status) !== -1;
-      else mf = r.status === state.statusFilter;
+      var mf = !isActive || state.statusFilter === "All" || r.status === state.statusFilter;
       return ms && mf;
     });
 
