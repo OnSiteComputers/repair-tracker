@@ -528,10 +528,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var tbody = table.querySelector("tbody");
     rows.forEach(function (r) {
       var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
+      var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
+                      (r.estimatedCost && String(r.estimatedCost).trim());
       var tr = el(
-        "<tr>" +
+        "<tr" + (hasDetail ? ' class="rowexp"' : "") + ">" +
           '<td class="cdate">' + esc(fmtDate(r.dateCheckedIn)) + "</td>" +
-          "<td><div class=\"cust\">" + esc(r.customerName || "—") + '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
+          "<td><div class=\"cust\">" + esc(r.customerName || "—") +
+            (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
+            '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
           "<td><div>" + esc(r.device || "—") + '</div><div class="csub">' + esc(r.brandModel) + "</div></td>" +
           '<td class="prob">' + esc(r.problem || "—") + "</td>" +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
@@ -540,9 +544,25 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           '<td class="acts"></td>' +
         "</tr>"
       );
-      tr.addEventListener("click", function () { openForm(r); });
       var acts = tr.querySelector(".acts");
       acts.addEventListener("click", function (e) { e.stopPropagation(); });
+
+      // Row click expands a detail row (findings + est. cost); pencil edits.
+      var detailRow = null;
+      if (hasDetail) {
+        tr.addEventListener("click", function () {
+          if (detailRow) { detailRow.remove(); detailRow = null; tr.classList.remove("open"); return; }
+          tr.classList.add("open");
+          var cells =
+            (r.diagnosticFindings && r.diagnosticFindings.trim()
+              ? '<div class="rd-row"><span class="rd-l">What we found</span><div class="rd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
+            (r.estimatedCost && String(r.estimatedCost).trim()
+              ? '<div class="rd-row"><span class="rd-l">Estimated cost</span><div class="rd-v">' +
+                esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "");
+          detailRow = el('<tr class="detailrow"><td colspan="7"><div class="rd-wrap">' + cells + "</div></td></tr>");
+          tr.parentNode.insertBefore(detailRow, tr.nextSibling);
+        });
+      }
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
@@ -822,6 +842,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
         ) +
         frow(fld("Diagnostic findings (screen only — not printed)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
+        frow(fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost))) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
       section("Charges",
@@ -831,8 +852,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Diagnostic fee paid?", sel("diagnosticFeePaid", YESNO, r.diagnosticFeePaid))
         ) +
         frow(
-          fld("Payment method", '<select data-k="paymentMethod"><option value="">—</option>' + opt(PAY_METHODS, r.paymentMethod) + "</select>") +
-          fld("Estimated cost (quote)", inp("estimatedCost", r.estimatedCost))
+          fld("Payment method", '<select data-k="paymentMethod"><option value="">—</option>' + opt(PAY_METHODS, r.paymentMethod) + "</select>")
         ) +
         '<div class="totals" id="totalsBox"></div>'
       );
