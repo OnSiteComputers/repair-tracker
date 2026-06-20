@@ -242,6 +242,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     view: "active",       // active | completed
     search: "",
     statusFilter: "All",
+    dateSortDir: "desc",  // desc = newest first, asc = oldest first
     authed: false,
   };
 
@@ -517,6 +518,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       return ms && mf;
     });
 
+    // sort by check-in date in the chosen direction; id breaks ties consistently
+    var dir = state.dateSortDir === "asc" ? -1 : 1;
+    rows.sort(function (a, b) {
+      var c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      if (c !== 0) return c * dir;
+      return String(b.id || "").localeCompare(String(a.id || "")) * dir;
+    });
+
     host.innerHTML = "";
     if (rows.length === 0) {
       var hasAny = list.length > 0;
@@ -537,12 +546,19 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }
 
     var tw = el('<div class="tablewrap"></div>');
+    var arrow = state.dateSortDir === "asc" ? " ↑" : " ↓";
     var table = el(
       "<table><thead><tr>" +
-        "<th>Checked in</th><th>Customer</th><th>Device</th><th>Problem</th>" +
+        '<th class="sortable" data-sortdate="1">Checked in<span class="sarrow">' + arrow + "</span></th>" +
+        "<th>Customer</th><th>Device</th><th>Problem</th>" +
         '<th>Status</th><th class="num">Est. cost</th><th class="ah">Actions</th>' +
       "</tr></thead><tbody></tbody></table>"
     );
+    var dateHdr = table.querySelector("[data-sortdate]");
+    dateHdr.addEventListener("click", function () {
+      state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+      paintTable();
+    });
     var tbody = table.querySelector("tbody");
     rows.forEach(function (r) {
       var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
