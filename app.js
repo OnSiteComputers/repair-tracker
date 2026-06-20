@@ -42,6 +42,23 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var INTAKE_TYPES = ["Appointment", "Walk-in"];
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Label"];
+  var DEVICES = ["Laptop", "Desktop"];
+  var BRANDS = ["Dell", "HP", "Lenovo", "ASUS", "Acer", "Apple", "MSI", "Microsoft Surface",
+    "Samsung", "Toshiba", "Sony", "LG", "Razer", "Gigabyte", "Alienware", "Custom Build"];
+  // Concord + surrounding Cabarrus / Charlotte-metro cities and zips
+  var CITY_ZIPS = [
+    "Concord, NC 28025", "Concord, NC 28027",
+    "Kannapolis, NC 28081", "Kannapolis, NC 28083",
+    "Harrisburg, NC 28075", "Midland, NC 28107", "Mount Pleasant, NC 28124",
+    "Huntersville, NC 28078", "Cornelius, NC 28031", "Davidson, NC 28036",
+    "Charlotte, NC 28205", "Charlotte, NC 28206", "Charlotte, NC 28213",
+    "Charlotte, NC 28215", "Charlotte, NC 28227", "Charlotte, NC 28262",
+    "Charlotte, NC 28269", "Charlotte, NC 28270", "Charlotte, NC 28277",
+    "Matthews, NC 28105", "Mint Hill, NC 28227", "Indian Trail, NC 28079",
+    "Monroe, NC 28110", "Salisbury, NC 28144", "China Grove, NC 28023",
+    "Albemarle, NC 28001"
+  ];
+  var ACCESSORY_OPTS = ["Charger", "USB Drive", "External Hard Drive"];
 
   // ---------- DB column map (snake_case in Supabase) ----------
   // app field  ->  db column
@@ -199,6 +216,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE,
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
     PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
+    DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
@@ -773,6 +791,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var R = window.__RT;
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
   var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
+  var DEVICES = R.DEVICES, BRANDS = R.BRANDS, CITY_ZIPS = R.CITY_ZIPS, ACCESSORY_OPTS = R.ACCESSORY_OPTS;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, logoImg = R.logoImg;
   var M = R.mgmt;
@@ -781,6 +800,41 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return list.map(function (o) {
       return '<option' + (o === sel ? " selected" : "") + ">" + esc(o) + "</option>";
     }).join("");
+  }
+
+  // native date picker (popup calendar)
+  function dateInp(k, v) {
+    return '<input type="date" data-k="' + k + '" value="' + esc(v) + '" />';
+  }
+
+  // dropdown with an "Other…" manual-entry option.
+  // If the saved value isn't in the list, it's treated as a custom value.
+  function selOther(k, list, v) {
+    var inList = list.indexOf(v) !== -1;
+    var custom = (!inList && v) ? v : "";
+    var options = '<option value=""' + (v ? "" : " selected") + ">—</option>" +
+      list.map(function (o) {
+        return '<option' + (o === v ? " selected" : "") + ">" + esc(o) + "</option>";
+      }).join("") +
+      '<option value="__other"' + (custom ? " selected" : "") + ">Other…</option>";
+    return '<select data-combo="' + k + '">' + options + "</select>" +
+      '<input data-comboother="' + k + '" class="combo-other" placeholder="Type it in…" value="' +
+      esc(custom) + '" style="margin-top:7px;' + (custom ? "" : "display:none;") + '" />';
+  }
+
+  // accessories: checkboxes + manual add, serialized to a comma string
+  function accessoriesField(v) {
+    var have = (v || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    var known = {};
+    ACCESSORY_OPTS.forEach(function (o) { known[o] = true; });
+    var extra = have.filter(function (s) { return !known[s]; });
+    var boxes = ACCESSORY_OPTS.map(function (o) {
+      var on = have.indexOf(o) !== -1 ? " checked" : "";
+      return '<label class="acc-box"><input type="checkbox" data-acc="' + esc(o) + '"' + on + " /> " + esc(o) + "</label>";
+    }).join("");
+    return '<div class="acc-wrap" data-accroot="1">' + boxes +
+      '<input class="acc-other" data-accother="1" placeholder="Add another (comma-separated)…" value="' +
+      esc(extra.join(", ")) + '" /></div>';
   }
 
   // ---------------- Form ----------------
@@ -805,29 +859,32 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     body.innerHTML =
       section("Customer",
         frow(
-          fld("Customer name", inp("customerName", r.customerName), "wide") +
-          fld("Phone", inp("phone", r.phone))
+          fld("Date checked in", dateInp("dateCheckedIn", r.dateCheckedIn)) +
+          fld("Customer name", inp("customerName", r.customerName), "wide")
         ) +
         frow(
-          fld("Email", inp("email", r.email), "wide") +
-          fld("Preferred contact", sel("preferredContact", CONTACT_PREF, r.preferredContact))
+          fld("Phone", inp("phone", r.phone)) +
+          fld("Email", inp("email", r.email), "wide")
         ) +
         frow(
-          fld("Address", inp("address", r.address), "wide") +
-          fld("City, State, Zip", inp("cityStateZip", r.cityStateZip))
+          fld("Preferred contact", sel("preferredContact", CONTACT_PREF, r.preferredContact)) +
+          fld("Address", inp("address", r.address), "wide")
+        ) +
+        frow(
+          fld("City, State, Zip", selOther("cityStateZip", CITY_ZIPS, r.cityStateZip), "wide")
         )
       ) +
       section("Device",
         frow(
-          fld("Device", inp("device", r.device)) +
-          fld("Brand / Model", inp("brandModel", r.brandModel))
+          fld("Device", selOther("device", DEVICES, r.device)) +
+          fld("Brand", selOther("brandModel", BRANDS, r.brandModel))
         ) +
         frow(
           fld("Serial number", inp("serialNumber", r.serialNumber)) +
           fld("Password / PIN", inp("passwordPin", r.passwordPin))
         ) +
         frow(
-          fld("Accessories received", inp("accessories", r.accessories), "wide") +
+          fld("Accessories received", accessoriesField(r.accessories), "full") +
           fld("Backup status", sel("backupStatus", BACKUP_STATUS, r.backupStatus))
         )
       ) +
@@ -870,6 +927,46 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         paintTotals();
       });
     });
+
+    // wire dropdown-with-"Other…" combos -> r
+    body.querySelectorAll("[data-combo]").forEach(function (selNode) {
+      var key = selNode.getAttribute("data-combo");
+      var otherNode = body.querySelector('[data-comboother="' + key + '"]');
+      function sync() {
+        if (selNode.value === "__other") {
+          otherNode.style.display = "";
+          r[key] = otherNode.value;
+        } else {
+          otherNode.style.display = "none";
+          r[key] = selNode.value;
+        }
+      }
+      selNode.addEventListener("change", sync);
+      otherNode.addEventListener("input", function () {
+        if (selNode.value === "__other") r[key] = otherNode.value;
+      });
+    });
+
+    // wire accessories checkboxes + manual entry -> r.accessories (comma string)
+    (function () {
+      var root = body.querySelector("[data-accroot]");
+      if (!root) return;
+      var otherInput = root.querySelector("[data-accother]");
+      function sync() {
+        var picked = [];
+        root.querySelectorAll("[data-acc]").forEach(function (cb) {
+          if (cb.checked) picked.push(cb.getAttribute("data-acc"));
+        });
+        (otherInput.value || "").split(",").forEach(function (s) {
+          s = s.trim(); if (s) picked.push(s);
+        });
+        r.accessories = picked.join(", ");
+      }
+      root.querySelectorAll("[data-acc]").forEach(function (cb) {
+        cb.addEventListener("change", sync);
+      });
+      otherInput.addEventListener("input", sync);
+    })();
 
     function paintTotals() {
       var t = computeTotals(r);
