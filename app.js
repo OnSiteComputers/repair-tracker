@@ -263,7 +263,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var page = el('<div class="spage"></div>');
     page.appendChild(el(
       '<div class="shdr"><div class="nm">' + esc(SHOP.name) + "</div>" +
-      '<div class="sub">Repair Status</div></div>'
+      '<div class="sub">Repair Status</div>' +
+      '<button class="sstatus-out" data-signout="1">Sign out</button></div>'
     ));
     var wrap = el('<div class="swrap"></div>');
     var updated = el('<div class="supdated"></div>');
@@ -274,6 +275,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     wrap.appendChild(listWrap);
     page.appendChild(wrap);
     app.appendChild(page);
+
+    var soBtn = page.querySelector("[data-signout]");
+    if (soBtn) soBtn.addEventListener("click", function () { window.__RT.mgmt.signOut(); });
 
     var q = "";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
@@ -299,18 +303,40 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       }
       rows.forEach(function (r) {
         var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
+        var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
+                        (r.estimatedCost && String(r.estimatedCost).trim());
         var card = el(
-          '<div class="scard" style="border-left-color:' + st.dot + '">' +
-            "<div>" +
-              '<div class="who">' + esc(r.customerName || "—") + "</div>" +
-              '<div class="dev">' + esc([r.device, r.brandModel].filter(Boolean).join(" · ") || "—") + "</div>" +
-              '<div class="meta">Checked in ' + esc(fmtDate(r.dateCheckedIn)) + "</div>" +
+          '<div class="scard' + (hasDetail ? " has-detail" : "") + '" style="border-left-color:' + st.dot + '">' +
+            '<div class="scard-main">' +
+              "<div>" +
+                '<div class="who">' + esc(r.customerName || "—") +
+                  (hasDetail ? ' <span class="caret">▾</span>' : "") + "</div>" +
+                '<div class="dev">' + esc([r.device, r.brandModel].filter(Boolean).join(" · ") || "—") + "</div>" +
+                '<div class="meta">Checked in ' + esc(fmtDate(r.dateCheckedIn)) +
+                  (r.phone ? "  ·  " + esc(r.phone) : "") + "</div>" +
+              "</div>" +
+              '<span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
+                '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) +
+              "</span>" +
             "</div>" +
-            '<span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
-              '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) +
-            "</span>" +
+            (hasDetail ?
+              '<div class="scard-detail">' +
+                (r.diagnosticFindings && r.diagnosticFindings.trim() ?
+                  '<div class="sd-row"><span class="sd-l">What we found</span>' +
+                  '<div class="sd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
+                (r.estimatedCost && String(r.estimatedCost).trim() ?
+                  '<div class="sd-row"><span class="sd-l">Estimated cost</span>' +
+                  '<div class="sd-v">' + esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "") +
+              "</div>" : "") +
           "</div>"
         );
+        if (hasDetail) {
+          var main = card.querySelector(".scard-main");
+          main.style.cursor = "pointer";
+          main.addEventListener("click", function () {
+            card.classList.toggle("open");
+          });
+        }
         listWrap.appendChild(card);
       });
     }
@@ -643,23 +669,46 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     });
   }
 
-  function afterAuth() {
+  // Read-only accounts: the "status" login(s). Matches by email or a metadata flag.
+  function isReadOnlyUser(session) {
+    try {
+      var u = session && session.user ? session.user : null;
+      if (!u) return false;
+      // metadata flag (set in Supabase: user_metadata.role = "status")
+      var meta = u.user_metadata || {};
+      if (meta.role === "status" || meta.readonly === true) return true;
+      // fallback: match the known status login email(s)
+      var email = (u.email || "").toLowerCase();
+      var readonlyEmails = ["status@onsite.local"];
+      return readonlyEmails.indexOf(email) !== -1;
+    } catch (e) { return false; }
+  }
+
+  function afterAuth(session) {
+    // If we weren't handed a session, fetch it (e.g. just-logged-in path)
+    if (!session) {
+      sb.auth.getSession().then(function (res) {
+        afterAuth(res && res.data ? res.data.session : null);
+      });
+      return;
+    }
     state.authed = true;
-    loadAndRender();
+    state.readonly = isReadOnlyUser(session);
+    if (state.readonly) {
+      renderStatusPage();
+    } else {
+      loadAndRender();
+    }
   }
 
   function boot() {
     if (!configOK || !sb) { bannerConfig(); return; }
 
-    if (IS_STATUS) {
-      renderStatusPage();
-      return;
-    }
-
+    // Everyone must log in now. After auth, role decides which view.
     sb.auth.getSession().then(function (res) {
       var session = res && res.data ? res.data.session : null;
       if (session) {
-        afterAuth();
+        afterAuth(session);
       } else {
         renderLogin();
       }

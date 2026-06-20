@@ -146,16 +146,28 @@ td{padding:11px 16px; vertical-align:middle}
 
 /* ===================== STATUS PAGE (Linda) ===================== */
 .spage{min-height:100vh; background:var(--bg)}
-.shdr{background:var(--navy); color:#fff; padding:18px 20px; text-align:center}
+.shdr{background:var(--navy); color:#fff; padding:18px 20px; text-align:center; position:relative}
+.sstatus-out{position:absolute; right:14px; top:50%; transform:translateY(-50%); background:rgba(255,255,255,.14); color:#fff; border:0; border-radius:7px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer}
+.sstatus-out:hover{background:rgba(255,255,255,.24)}
 .shdr .nm{font-family:'Playfair Display',Georgia,serif; font-size:20px; font-weight:700}
 .shdr .sub{font-size:12px; opacity:.75; letter-spacing:.06em; text-transform:uppercase; margin-top:3px}
 .swrap{max-width:760px; margin:0 auto; padding:18px 16px 60px}
 .supdated{text-align:center; font-size:12px; color:var(--muted); margin-bottom:14px}
 .scards{display:flex; flex-direction:column; gap:11px}
-.scard{background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-left:5px solid var(--line)}
+.scard{background:#fff; border:1px solid var(--line); border-radius:12px; border-left:5px solid var(--line); overflow:hidden}
+.scard-main{padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px}
+.scard.has-detail .scard-main:hover{background:#FAF8F3}
 .scard .who{font-weight:700; font-size:15px}
+.scard .caret{font-size:11px; color:var(--muted); transition:transform .15s; display:inline-block}
+.scard.open .caret{transform:rotate(180deg)}
 .scard .dev{font-size:13px; color:var(--muted); margin-top:2px}
 .scard .meta{font-size:12px; color:#999; margin-top:3px}
+.scard-detail{display:none; padding:0 16px 14px; border-top:1px solid var(--line); margin-top:0}
+.scard.open .scard-detail{display:block; padding-top:12px}
+.sd-row{margin-bottom:10px}
+.sd-row:last-child{margin-bottom:0}
+.sd-l{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--navy2); font-weight:700; margin-bottom:3px}
+.sd-v{font-size:14px; color:var(--ink); line-height:1.45; white-space:pre-wrap}
 .sempty{background:#fff; border:1px solid var(--line); border-radius:12px; padding:46px 24px; text-align:center; color:var(--muted)}
 .ssearch{width:100%; padding:11px 14px; border:1px solid var(--line); border-radius:10px; font-size:15px; margin-bottom:14px; background:#fff}
 .ssearch:focus{outline:none; border-color:var(--navy2); box-shadow:0 0 0 3px rgba(39,64,139,.12)}
