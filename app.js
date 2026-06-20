@@ -43,6 +43,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
+  // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
+  var WORKING_STATES = ["Checked In", "Diagnosed", "Waiting on Parts", "In Repair"];
   var BRANDS = ["Dell", "HP", "Lenovo", "ASUS", "Acer", "Apple", "MSI", "Microsoft Surface",
     "Samsung", "Toshiba", "Sony", "LG", "Razer", "Gigabyte", "Alienware", "Custom Build"];
   // Concord + surrounding Cabarrus / Charlotte-metro cities and zips
@@ -217,6 +219,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
     PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
     DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
+    WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
@@ -230,6 +233,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var SHOP = R.SHOP, STATUSES = R.STATUSES, STATUS_STYLE = R.STATUS_STYLE;
   var CONTACT_PREF = R.CONTACT_PREF, BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO;
   var PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES;
+  var WORKING_STATES = R.WORKING_STATES;
   var toRow = R.toRow, fromRow = R.fromRow, blankRepair = R.blankRepair;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG;
@@ -262,6 +266,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       });
   }
   function saveRepair(rec) {
+    // Status is the source of truth for the Completed bucket:
+    // "Picked Up" => completed; any other status => active. This keeps a record
+    // from getting stuck in Completed after its status is changed.
+    if (rec.status !== undefined) {
+      rec.completed = (rec.status === "Picked Up");
+    }
     var row = toRow(rec);
     var q = rec.id
       ? sb.from("repairs").update(row).eq("id", rec.id).select()
@@ -316,9 +326,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
+      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       statsHost.innerHTML =
         '<div class="stats">' +
-          statCard(active.length, "Active repairs", "#3B5BA5", "All") +
+          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
           statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
@@ -349,10 +360,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
 
     function paint() {
-      var active = state.repairs.filter(function (r) { return !r.completed; });
+      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up"; });
       paintStats(active);
       var rows = active.filter(function (r) {
-        if (statusFilter !== "All" && r.status !== statusFilter) return false;
+        if (statusFilter === "Active") { if (R.WORKING_STATES.indexOf(r.status) === -1) return false; }
+        else if (statusFilter !== "All") { if (r.status !== statusFilter) return false; }
         if (!q) return true;
         return (r.customerName + " " + r.device + " " + r.brandModel).toLowerCase().indexOf(q) !== -1;
       });
@@ -366,8 +378,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       });
       listWrap.innerHTML = "";
       if (rows.length === 0) {
+        var label = statusFilter === "Active" ? "in progress" : "“" + esc(statusFilter) + "”";
         var msg = q ? "No repairs match that search."
-          : (statusFilter !== "All" ? "No repairs in “" + esc(statusFilter) + "” right now."
+          : (statusFilter !== "All" ? "No repairs " + label + " right now."
           : "No active repairs right now.");
         listWrap.appendChild(el('<div class="sempty">' + msg + "</div>"));
         return;
@@ -445,14 +458,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var root = el('<div></div>');
 
     // header
-    var active = state.repairs.filter(function (r) { return !r.completed; });
-    var completed = state.repairs.filter(function (r) { return r.completed; });
+    // Completed view = Picked Up (or legacy archived). Active = everything else.
+    function isDone(r) { return r.completed || r.status === "Picked Up"; }
+    var active = state.repairs.filter(function (r) { return !isDone(r); });
+    var completed = state.repairs.filter(isDone);
+    // header "Active" count = working states only (Ready for Pickup excluded)
+    var activeCount = active.filter(function (r) { return WORKING_STATES.indexOf(r.status) !== -1; }).length;
     var hdr = el(
       '<header class="hdr">' +
         '<div class="brand"><div class="mark">' + doctorMarkSVG() + "</div>" +
           '<div><div class="nm">' + esc(SHOP.name) + '</div><div class="sub">Repair Tracker</div></div></div>' +
         '<nav class="nav">' +
-          '<button class="tab" data-v="active">Active <span class="ct">' + active.length + "</span></button>" +
+          '<button class="tab" data-v="active">Active <span class="ct">' + activeCount + "</span></button>" +
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
@@ -477,9 +494,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
+      // "Active" = work-in-progress only; Ready for Pickup is done, counted separately
+      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       var statsEl = el(
         '<div class="stats">' +
-          statCard(active.length, "Active repairs", "#3B5BA5", "All") +
+          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
           statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
@@ -500,7 +519,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }
 
     // toolbar
-    var picked2 = active.filter(function (r) { return r.status === "Picked Up"; }).length;
     var toolbar = el('<div class="toolbar"></div>');
     var tleft = el('<div class="tleft"></div>');
     var search = el('<input class="search" placeholder="Search name, phone, device, problem…" />');
@@ -528,12 +546,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     var tright = el('<div class="tright"></div>');
     if (state.view === "active") {
-      var moveBtn = el('<button class="btn btn-gho">Move picked-up → Completed' +
-        (picked2 > 0 ? ' <span class="pill">' + picked2 + "</span>" : "") + "</button>");
-      moveBtn.addEventListener("click", moveCompleted);
       var newBtn = el('<button class="btn btn-pri">+ New repair</button>');
       newBtn.addEventListener("click", function () { openForm(blankRepair()); });
-      tright.appendChild(moveBtn);
       tright.appendChild(newBtn);
     }
     toolbar.appendChild(tright);
@@ -557,12 +571,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var host = document.getElementById("tableHost");
     if (!host) return;
     var isActive = state.view === "active";
-    var list = state.repairs.filter(function (r) { return isActive ? !r.completed : r.completed; });
+    var isDone = function (r) { return r.completed || r.status === "Picked Up"; };
+    var list = state.repairs.filter(function (r) { return isActive ? !isDone(r) : isDone(r); });
     var q = state.search.toLowerCase();
     var rows = list.filter(function (r) {
       var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem]
         .join(" ").toLowerCase().indexOf(q) !== -1;
-      var mf = !isActive || state.statusFilter === "All" || r.status === state.statusFilter;
+      var mf;
+      if (!isActive || state.statusFilter === "All") mf = true;
+      else if (state.statusFilter === "Active") mf = WORKING_STATES.indexOf(r.status) !== -1;
+      else mf = r.status === state.statusFilter;
       return ms && mf;
     });
 
@@ -581,7 +599,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<div class="empty"><div class="t">' +
           (!isActive ? "No completed jobs yet" : hasAny ? "No repairs match your search" : "No repairs yet") +
         '</div><div class="s">' +
-          (!isActive ? "When a repair is marked Picked Up, use “Move picked-up → Completed” to archive it here."
+          (!isActive ? "Repairs marked Picked Up show up here. Open one and change its status to send it back to Active."
             : hasAny ? "Try a different search term or status filter." : "Add your first repair to get started.") +
         "</div></div>"
       ));
@@ -648,9 +666,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
-      // restore (completed only)
+      // restore to active (for accidental Picked Up, or archived jobs)
       if (!isActive) {
-        var rb = el('<button class="ibtn" title="Restore to active">↩</button>');
+        var rb = el('<button class="ibtn" title="Send back to active">↩</button>');
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
       }
@@ -699,8 +717,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }).catch(function (e) { toast("Couldn't move jobs"); console.error(e); });
   }
   function restoreJob(r) {
-    saveRepair({ id: r.id, completed: false, status: "Ready for Pickup" })
-      .then(loadRepairs).then(function () { toast("Job restored to active"); renderApp(); })
+    saveRepair({ id: r.id, completed: false, status: "In Repair" })
+      .then(loadRepairs).then(function () { toast("Sent back to active"); renderApp(); })
       .catch(function (e) { toast("Couldn't restore"); console.error(e); });
   }
 
