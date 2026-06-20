@@ -1371,8 +1371,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var tax7 = function (n) { return Math.round(n * SHOP.taxRate * 100) / 100; };
     var charges = "";
     var sign =
-      '<div class="dsig"><div class="dsig-l"></div>' +
-      '<div class="dsig-c"><span>Customer Signature:</span><span>Date:</span></div></div>';
+      '<div class="dsig">' +
+        '<div class="dsig-row">' +
+          '<div class="dsig-field dsig-sig"><div class="dsig-line"></div><div class="dsig-lbl">Customer Signature</div></div>' +
+          '<div class="dsig-field dsig-date"><div class="dsig-line"></div><div class="dsig-lbl">Date</div></div>' +
+        "</div>" +
+      "</div>";
 
     if (type === "Service Order") {
       var soTax = tax7(SHOP.diagFee);
@@ -1478,8 +1482,13 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ".dterm li:before{content:'\\25AA';position:absolute;left:0;color:#0B0B0C}" +
       ".dterm li.strong{font-weight:700}" +
       // ----- signature -----
-      ".dsig{margin-top:16px}" +
-      ".dsig-c{display:flex;justify-content:space-between;font-weight:700;font-size:13px;border-top:1px solid #0B0B0C;padding-top:6px}" +
+      ".dsig{margin-top:28px}" +
+      ".dsig-row{display:flex;justify-content:space-between;gap:40px;align-items:flex-end}" +
+      ".dsig-field{display:flex;flex-direction:column}" +
+      ".dsig-sig{flex:1 1 auto}" +
+      ".dsig-date{flex:0 0 200px}" +
+      ".dsig-line{border-bottom:1px solid #0B0B0C;height:34px}" +
+      ".dsig-lbl{font-size:12px;font-weight:700;color:#0B0B0C;padding-top:4px}" +
       ".dthx{margin-top:14px;text-align:center;font-family:'Playfair Display',Georgia,serif;font-style:italic;font-weight:700;font-size:14px;color:#1A2E5A}" +
       ".dq{text-align:center;font-style:italic;font-size:11px;color:#999;margin-top:4px}" +
       ".drev{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:14px;padding:10px 16px;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3}" +
@@ -1489,8 +1498,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ".rsold{flex:0 0 290px;border:1px solid #0B0B0C}" +
       ".rsold-h{background:#1A2E5A;color:#fff;font-weight:700;font-size:12px;padding:4px 10px}" +
       ".rsold-b{padding:8px 10px;font-size:13px;line-height:1.55}" +
-      ".rmeta{border-collapse:collapse;font-size:12px;flex:0 0 auto;margin-left:auto}" +
-      ".rmeta td{border:1px solid #0B0B0C;padding:5px 0;text-align:center;font-weight:700;background:#EEF1F7;width:120px}" +
+      ".rmeta{border-collapse:collapse;font-size:12px;flex:0 0 240px;width:240px;table-layout:fixed;margin-left:auto}" +
+      ".rmeta td{border:1px solid #0B0B0C;padding:5px 6px;text-align:center;font-weight:700;background:#EEF1F7;width:120px;word-break:break-word}" +
       ".rmeta tr.v td{background:#fff;font-weight:400}" +
       ".rmeta td.pm{background:#EEF1F7;font-weight:700}" +
       ".ritem{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}" +
