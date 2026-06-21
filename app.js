@@ -1280,14 +1280,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         ".dpage{box-sizing:border-box;overflow:hidden}" +
         ".dpage *{box-sizing:border-box}" +
         ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px;width:100%;max-width:100%}" +
-        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto;padding-right:12px;overflow:hidden}" +
+        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto;padding-right:18px;overflow:hidden}" +
         ".dpage .dh-logobox{display:flex;flex-direction:column;align-items:center;flex:0 0 auto}" +
         ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
         ".dpage .dh-info{text-align:center;min-width:0}" +
         ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
         ".dpage .dh-tagline{font-size:12px;font-style:italic;color:#E07B39;margin-top:3px;text-align:center}" +
         ".dpage .dh-line{font-size:11px;color:#555;margin-top:3px}" +
-        ".dpage .dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
+        ".dpage .dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:7px 10px;margin-right:2px}" +
         ".dpage .dh-review-qr{width:70px;height:70px;max-width:70px;max-height:70px;flex:0 0 auto;display:block;object-fit:contain}" +
         ".dpage .dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
         ".dpage .dh-review-txt b{color:#1A2E5A;font-size:12px}";
@@ -1657,8 +1657,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   function printCSS() {
     // pull the document styles out of the page's stylesheet (the .d* rules) +
     // a print page setup. Simplest: re-declare the needed rules inline.
-    return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
-      "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
+    return "@page{size:letter;margin:0}*{margin:0;padding:0;box-sizing:border-box}" +
+      "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0.5in}svg{display:block}" +
       // ----- header -----
       ".dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px}" +
       ".dh-brand{display:flex;align-items:center;gap:14px}" +
