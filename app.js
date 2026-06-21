@@ -1128,14 +1128,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     function paintTotals() {
       var t = computeTotals(r);
-      document.getElementById("totalsBox").innerHTML =
+      var diagPaid = (r.diagnosticFeePaid === "Yes");
+      var rows =
         trow("Parts cost", money(t.parts)) +
         trow("Parts billed (+" + t.markupPct + "%)", money(t.markedParts)) +
         trow("Labor", money(t.labor)) +
-        trow("Diagnostic fee" + (r.diagnosticFeePaid === "Yes" ? " (already paid)" : ""), money(t.diag)) +
-        trow("Subtotal", money(t.subtotal)) +
-        trow("Sales tax (7%)", money(t.tax)) +
-        trow("Total", money(t.total), true);
+        trow("Subtotal", money(t.plSubtotal)) +
+        trow("Sales tax (7%)", money(t.plTax));
+      if (diagPaid && t.diagCredit > 0) {
+        rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
+      }
+      rows += trow("Total due", money(t.finalDue), true);
+      document.getElementById("totalsBox").innerHTML = rows;
     }
     function paintRemote() {
       var box = document.getElementById("remoteTotalsBox");
