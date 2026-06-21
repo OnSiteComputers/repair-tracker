@@ -22,6 +22,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     diagFee: 129,
     apptFee: 25,
     taxRate: 0.07,
+    partsMarkup: 35,   // default % markup on parts cost; editable per ticket
+    remoteRegular: 186.91,   // pre-tax; +7% = $199.99 all-in
+    remoteEmergency: 280.36, // pre-tax; +7% = $299.99 all-in
   };
 
   var STATUSES = [
@@ -40,8 +43,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var BACKUP_STATUS = ["Confirms backed up", "Requests backup service", "Declines backup"];
   var YESNO = ["Yes", "No"];
   var INTAKE_TYPES = ["Appointment", "Walk-in"];
+  var JOB_TYPES = ["Repair", "Remote Support"];
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
-  var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Label"];
+  var REMOTE_RATE_TYPES = ["Regular ($199.99 total)", "Emergency ($299.99 total)"];
+  var REMOTE_PAY = ["Debit", "Credit"];
+  var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
   // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
   var WORKING_STATES = ["Checked In", "Diagnosed", "Waiting on Parts", "In Repair"];
@@ -81,6 +87,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     backupStatus: "backup_status",
     problem: "problem",
     status: "status",
+    jobType: "job_type",
     intakeType: "intake_type",
     waitingOnParts: "waiting_on_parts",
     readyForPickup: "ready_for_pickup",
@@ -88,7 +95,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     diagnosticFindings: "diagnostic_findings",
     workPerformed: "work_performed",
     diagnosticFeePaid: "diagnostic_fee_paid",
+    remoteHours: "remote_hours",
+    remoteRateType: "remote_rate_type",
+    remoteWork: "remote_work",
+    remotePayMethod: "remote_pay_method",
     partsAmount: "parts_amount",
+    partsMarkup: "parts_markup",
     laborAmount: "labor_amount",
     paymentMethod: "payment_method",
     dateCompleted: "date_completed",
@@ -108,12 +120,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   function blankRepair() {
     return {
       dateCheckedIn: new Date().toISOString().slice(0, 10),
+      jobType: "Repair",
       customerName: "", phone: "", email: "", address: "", cityStateZip: "",
       preferredContact: "Call", device: "", brandModel: "", serialNumber: "",
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
-      partsAmount: "", laborAmount: "", paymentMethod: "", dateCompleted: "",
+      partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
+      remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
       completed: false,
     };
   }
@@ -132,6 +146,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var rate = SHOP.taxRate;
     var rnd = function (n) { return Math.round(n * 100) / 100; };
 
+    // ----- Parts markup (default 35%, editable per ticket) -----
+    // partsAmount holds your COST; markedParts is what the customer is billed.
+    var markupPct = (r.partsMarkup === "" || r.partsMarkup == null) ? SHOP.partsMarkup : num(r.partsMarkup);
+    var markedParts = rnd(parts * (1 + markupPct / 100));
+
     // ----- Diagnostic fee (taxable) -----
     var diagFee = SHOP.diagFee;                     // 129
     var diagTax = rnd(diagFee * rate);              // 9.03
@@ -145,25 +164,41 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // diagnostic (taxed) minus any appointment fee already prepaid
     var dropDue = rnd(diagTotal - apptFee);         // appt: 113.03 / walk-in: 138.03
 
-    // ----- Final receipt: parts & labor taxed, minus full diagnostic already paid -----
-    var plSubtotal = rnd(parts + labor);
+    // ----- Final receipt: marked-up parts & labor taxed, minus full diagnostic already paid -----
+    var plSubtotal = rnd(markedParts + labor);
     var plTax = rnd(plSubtotal * rate);
     var plWithTax = rnd(plSubtotal + plTax);
-    var diagCredit = diagTotal;                     // 138.03 credited at pickup
+    var diagPaid = (r.diagnosticFeePaid === "Yes");
+    var diagCredit = diagPaid ? diagTotal : 0;      // only credit if actually paid
     var finalDue = rnd(plWithTax - diagCredit);
 
     return {
       parts: parts, labor: labor,
-      // legacy fields kept for Quote/other docs
+      markupPct: markupPct, markedParts: markedParts,
+      // legacy fields kept for Quote/other docs (now use marked-up parts)
       diag: r.diagnosticFeePaid === "Yes" ? 0 : diagFee,
-      subtotal: rnd(parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
-      tax: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * rate),
-      total: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * (1 + rate)),
+      subtotal: rnd(markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
+      tax: rnd((markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * rate),
+      total: rnd((markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * (1 + rate)),
       // new fee model
       diagFee: diagFee, diagTax: diagTax, diagTotal: diagTotal,
       isAppt: isAppt, apptFee: apptFee, dropDue: dropDue,
       plSubtotal: plSubtotal, plTax: plTax, plWithTax: plWithTax,
       diagCredit: diagCredit, finalDue: finalDue,
+    };
+  }
+  function computeRemote(r) {
+    var rnd = function (n) { return Math.round(n * 100) / 100; };
+    var hrs = num(r.remoteHours);
+    var isEmergency = (r.remoteRateType || "").indexOf("Emergency") !== -1;
+    var rate = isEmergency ? SHOP.remoteEmergency : SHOP.remoteRegular;
+    var subtotal = rnd(hrs * rate);
+    var tax = rnd(subtotal * SHOP.taxRate);
+    var total = rnd(subtotal + tax);
+    return {
+      hours: hrs, rate: rate, isEmergency: isEmergency,
+      rateLabel: isEmergency ? "Emergency" : "Regular",
+      subtotal: subtotal, tax: tax, total: total,
     };
   }
   function esc(s) {
@@ -217,11 +252,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   window.__RT = {
     SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE,
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
-    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
+    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES, JOB_TYPES: JOB_TYPES,
+    REMOTE_RATE_TYPES: REMOTE_RATE_TYPES, REMOTE_PAY: REMOTE_PAY,
     DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
-    num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals,
+    num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
   };
@@ -360,7 +396,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
 
     function paint() {
-      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up"; });
+      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up" && r.jobType !== "Remote Support"; });
       paintStats(active);
       var rows = active.filter(function (r) {
         if (statusFilter === "Active") { if (R.WORKING_STATES.indexOf(r.status) === -1) return false; }
@@ -459,9 +495,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     // header
     // Completed view = Picked Up (or legacy archived). Active = everything else.
+    // Remote Support jobs are kept out of both and shown in their own view.
     function isDone(r) { return r.completed || r.status === "Picked Up"; }
-    var active = state.repairs.filter(function (r) { return !isDone(r); });
-    var completed = state.repairs.filter(isDone);
+    function isRemote(r) { return r.jobType === "Remote Support"; }
+    var remote = state.repairs.filter(isRemote);
+    var active = state.repairs.filter(function (r) { return !isDone(r) && !isRemote(r); });
+    var completed = state.repairs.filter(function (r) { return isDone(r) && !isRemote(r); });
     // header "Active" count = working states only (Ready for Pickup excluded)
     var activeCount = active.filter(function (r) { return WORKING_STATES.indexOf(r.status) !== -1; }).length;
     var hdr = el(
@@ -471,6 +510,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<nav class="nav">' +
           '<button class="tab" data-v="active">Active <span class="ct">' + activeCount + "</span></button>" +
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
+          '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -571,11 +611,17 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var host = document.getElementById("tableHost");
     if (!host) return;
     var isActive = state.view === "active";
+    var isRemoteView = state.view === "remote";
     var isDone = function (r) { return r.completed || r.status === "Picked Up"; };
-    var list = state.repairs.filter(function (r) { return isActive ? !isDone(r) : isDone(r); });
+    var isRemote = function (r) { return r.jobType === "Remote Support"; };
+    var list = state.repairs.filter(function (r) {
+      if (isRemoteView) return isRemote(r);
+      if (isRemote(r)) return false;               // remote jobs never show in active/completed
+      return isActive ? !isDone(r) : isDone(r);
+    });
     var q = state.search.toLowerCase();
     var rows = list.filter(function (r) {
-      var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem]
+      var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem, r.remoteWork]
         .join(" ").toLowerCase().indexOf(q) !== -1;
       var mf;
       if (!isActive || state.statusFilter === "All") mf = true;
@@ -636,8 +682,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           "<td><div class=\"cust\">" + esc(r.customerName || "—") +
             (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
-          "<td><div>" + esc(r.device || "—") + '</div><div class="csub">' + esc(r.brandModel) + "</div></td>" +
-          '<td class="prob">' + esc(r.problem || "—") + "</td>" +
+          "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.device || "—")) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : r.brandModel) + "</div></td>" +
+          '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.problem || "—")) + "</td>" +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
             '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span></td>" +
           '<td class="num">' + (r.estimatedCost ? money(num(r.estimatedCost)) : "—") + "</td>" +
@@ -666,8 +712,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
-      // restore to active (for accidental Picked Up, or archived jobs)
-      if (!isActive) {
+      // one-click receipt button
+      if (r.jobType === "Remote Support") {
+        // remote jobs are paid up front — receipt always available
+        var rrcpt = el('<button class="ibtn" title="Print Remote Support Receipt">🧾</button>');
+        rrcpt.addEventListener("click", function () { openDoc(r, "Remote Support Receipt"); });
+        acts.appendChild(rrcpt);
+      } else if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
+        // one-click Final Receipt — only once the job is ready, so no $0 misfires
+        var rcpt = el('<button class="ibtn" title="Print Sales Receipt">🧾</button>');
+        rcpt.addEventListener("click", function () { openDoc(r, "Final Receipt"); });
+        acts.appendChild(rcpt);
+      }
+      // restore to active (for accidental Picked Up, or archived jobs) — not for remote
+      if (!isActive && !isRemoteView) {
         var rb = el('<button class="ibtn" title="Send back to active">↩</button>');
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
@@ -692,7 +750,17 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       pop.appendChild(b);
     });
     btn.addEventListener("click", function () {
-      pop.style.display = pop.style.display === "none" ? "block" : "none";
+      if (pop.style.display === "none") {
+        pop.style.display = "block";
+        pop.classList.remove("up");
+        var rect = btn.getBoundingClientRect();
+        var spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < pop.offsetHeight + 16) {
+          pop.classList.add("up");
+        }
+      } else {
+        pop.style.display = "none";
+      }
     });
     document.addEventListener("mousedown", function (e) {
       if (!menu.contains(e.target)) pop.style.display = "none";
@@ -873,8 +941,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var R = window.__RT;
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
   var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
+  var JOB_TYPES = R.JOB_TYPES;
+  var REMOTE_RATE_TYPES = R.REMOTE_RATE_TYPES, REMOTE_PAY = R.REMOTE_PAY;
   var DEVICES = R.DEVICES, BRANDS = R.BRANDS, CITY_ZIPS = R.CITY_ZIPS, ACCESSORY_OPTS = R.ACCESSORY_OPTS;
-  var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
+  var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals, computeRemote = R.computeRemote;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, logoImg = R.logoImg;
   var M = R.mgmt;
 
@@ -939,6 +1009,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     var body = el('<div class="mbody"></div>');
     body.innerHTML =
+      section("Job Type",
+        frow(fld("This ticket is a", sel("jobType", JOB_TYPES, r.jobType || "Repair")))
+      ) +
       section("Customer",
         frow(
           fld("Date checked in", dateInp("dateCheckedIn", r.dateCheckedIn)) +
@@ -986,7 +1059,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ) +
       section("Charges",
         frow(
-          fld("Parts amount", inp("partsAmount", r.partsAmount)) +
+          fld("Parts cost", inp("partsAmount", r.partsAmount)) +
+          fld("Parts markup %", inp("partsMarkup", r.partsMarkup)) +
           fld("Labor amount", inp("laborAmount", r.laborAmount)) +
           fld("Diagnostic fee paid?", sel("diagnosticFeePaid", YESNO, r.diagnosticFeePaid))
         ) +
@@ -994,6 +1068,15 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Payment method", '<select data-k="paymentMethod"><option value="">—</option>' + opt(PAY_METHODS, r.paymentMethod) + "</select>")
         ) +
         '<div class="totals" id="totalsBox"></div>'
+      ) +
+      section("Remote Support (separate receipt)",
+        frow(
+          fld("Remote hours", inp("remoteHours", r.remoteHours)) +
+          fld("Rate", sel("remoteRateType", REMOTE_RATE_TYPES, r.remoteRateType)) +
+          fld("Paid by", sel("remotePayMethod", REMOTE_PAY, r.remotePayMethod))
+        ) +
+        frow(fld("Remote work performed (prints on Remote Support Receipt)", ta("remoteWork", r.remoteWork, 4), "full")) +
+        '<div class="totals" id="remoteTotalsBox"></div>'
       );
     modal.appendChild(body);
 
@@ -1001,12 +1084,15 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     body.querySelectorAll("[data-k]").forEach(function (node) {
       node.addEventListener("input", function () {
         r[node.getAttribute("data-k")] = node.value;
-        if (["partsAmount", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
+        if (["partsAmount", "partsMarkup", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
           paintTotals();
+        if (["remoteHours", "remoteRateType"].indexOf(node.getAttribute("data-k")) !== -1)
+          paintRemote();
       });
       node.addEventListener("change", function () {
         r[node.getAttribute("data-k")] = node.value;
         paintTotals();
+        paintRemote();
       });
     });
 
@@ -1052,12 +1138,27 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     function paintTotals() {
       var t = computeTotals(r);
-      document.getElementById("totalsBox").innerHTML =
-        trow("Parts + Labor", money(t.parts + t.labor)) +
-        trow("Diagnostic fee" + (r.diagnosticFeePaid === "Yes" ? " (already paid)" : ""), money(t.diag)) +
-        trow("Subtotal", money(t.subtotal)) +
-        trow("Sales tax (7%)", money(t.tax)) +
-        trow("Total", money(t.total), true);
+      var diagPaid = (r.diagnosticFeePaid === "Yes");
+      var rows =
+        trow("Parts cost", money(t.parts)) +
+        trow("Parts billed (+" + t.markupPct + "%)", money(t.markedParts)) +
+        trow("Labor", money(t.labor)) +
+        trow("Subtotal", money(t.plSubtotal)) +
+        trow("Sales tax (7%)", money(t.plTax));
+      if (diagPaid && t.diagCredit > 0) {
+        rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
+      }
+      rows += trow("Total due", money(t.finalDue), true);
+      document.getElementById("totalsBox").innerHTML = rows;
+    }
+    function paintRemote() {
+      var box = document.getElementById("remoteTotalsBox");
+      if (!box) return;
+      var rm = computeRemote(r);
+      box.innerHTML =
+        trow("Remote support (" + rm.rateLabel + " · " + rm.hours + " hr × " + money(rm.rate) + ")", money(rm.subtotal)) +
+        trow("Sales tax (7%)", money(rm.tax)) +
+        trow("Remote total", money(rm.total), true);
     }
 
     // footer
@@ -1108,6 +1209,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
     paintTotals();
+    paintRemote();
     var first = body.querySelector("input"); if (first) first.focus();
 
     function onEsc(e) { if (e.key === "Escape") close(); }
@@ -1171,12 +1273,30 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       tabs.querySelectorAll(".dtab").forEach(function (b) {
         b.classList.toggle("on", b.textContent === type);
       });
-      page.innerHTML = docHTML(r, type);
+      // The new header rules live in printCSS (used by the print window). The
+      // on-screen preview stylesheet may not have them yet, so inject just the
+      // header rules — scoped to .dpage — so the review QR isn't full size.
+      var previewHeaderCSS =
+        ".dpage{box-sizing:border-box;overflow:hidden}" +
+        ".dpage *{box-sizing:border-box}" +
+        ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px;width:100%;max-width:100%}" +
+        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto}" +
+        ".dpage .dh-logobox{display:flex;flex-direction:column;align-items:center;flex:0 0 auto}" +
+        ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
+        ".dpage .dh-info{text-align:center;min-width:0}" +
+        ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
+        ".dpage .dh-tagline{font-size:12px;font-style:italic;color:#E07B39;margin-top:3px;text-align:center}" +
+        ".dpage .dh-line{font-size:11px;color:#555;margin-top:3px}" +
+        ".dpage .dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
+        ".dpage .dh-review-qr{width:70px;height:70px;max-width:70px;max-height:70px;flex:0 0 auto;display:block;object-fit:contain}" +
+        ".dpage .dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
+        ".dpage .dh-review-txt b{color:#1A2E5A;font-size:12px}";
+      page.innerHTML = '<style>' + previewHeaderCSS + "</style>" + docHTML(r, type);
     }
     function doPrint() {
       // Print via a hidden iframe rather than a pop-up window.
-      // Pop-ups (window.open) are blocked by Safari/iMac and often print
-      // before images load. An iframe prints reliably across browsers.
+      // Pop-ups (window.open) get blocked and often print before images load.
+      // An iframe prints reliably across browsers (Chrome, Safari/iMac, etc).
       var docMarkup = '<!doctype html><html><head><meta charset="utf-8"><title>' +
         esc(type) + " — " + esc(r.customerName) +
         '</title><style>' + printCSS() + "</style></head><body>" +
@@ -1202,7 +1322,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         } catch (e) {
           alert("Couldn't open the print dialog. Please try again.");
         }
-        // remove after the dialog has had time to grab the content
         setTimeout(function () {
           if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
         }, 1000);
@@ -1213,7 +1332,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       idoc.write(docMarkup);
       idoc.close();
 
-      // Wait for images (logo, QR) to finish before printing; fall back on a timer.
       var imgs = idoc.images ? Array.prototype.slice.call(idoc.images) : [];
       var pending = imgs.filter(function (im) { return !im.complete; }).length;
       if (pending === 0) {
@@ -1224,7 +1342,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           im.addEventListener("load", function () { pending--; if (pending === 0) fire(); });
           im.addEventListener("error", function () { pending--; if (pending === 0) fire(); });
         });
-        // safety net in case an image never resolves
         setTimeout(fire, 2500);
       }
     }
@@ -1277,18 +1394,80 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       "Service Order": "SERVICE ORDER", "Quote": "QUOTE",
       "Drop-Off Receipt": "DIAGNOSTIC DROP-OFF RECEIPT", "Final Receipt": "SALES RECEIPT",
       "Diagnostic Receipt": "DIAGNOSTIC RECEIPT",
+      "Remote Support Receipt": "REMOTE SUPPORT RECEIPT",
     };
 
-    // Compact header (shared)
+    // Compact header (shared) — brand centered, review QR on the right flank
+    var headReview = "";
+    if (window.__RT_REVIEW_QR) {
+      headReview =
+        '<div class="dh-review">' +
+          '<img class="dh-review-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a Google review" />' +
+          '<div class="dh-review-txt">Happy with our service?<br><b>Leave us a review on Google</b></div>' +
+        "</div>";
+    }
     var head =
       '<div class="dh">' +
-        '<div class="dh-logo">' + logoImg(78) + "</div>" +
-        '<div class="dh-info">' +
-          '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
-          '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) +
-            "  &middot;  " + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
+        '<div class="dh-brand">' +
+          '<div class="dh-logobox">' +
+            '<div class="dh-logo">' + logoImg(110) + "</div>" +
+            '<div class="dh-tagline">' + esc(SHOP.tagline) + "</div>" +
+          "</div>" +
+          '<div class="dh-info">' +
+            '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
+            '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) + "</div>" +
+            '<div class="dh-line">' + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
+          "</div>" +
         "</div>" +
+        headReview +
       "</div>";
+
+    // ===== REMOTE SUPPORT RECEIPT (paid up front, hours + tax only) =====
+    if (type === "Remote Support Receipt") {
+      var rm = computeRemote(r);
+      var rSaleNo = (r.id || "------").slice(-6).toUpperCase();
+      var rSoldTo =
+        '<div class="rsold">' +
+          '<div class="rsold-h">Sold To</div>' +
+          '<div class="rsold-b">' + esc(r.customerName || "") +
+            (r.address ? "<br>" + esc(r.address) : "") +
+            (r.cityStateZip ? "<br>" + esc(r.cityStateZip) : "") +
+            (r.phone ? "<br>" + esc(r.phone) : "") + "</div>" +
+        "</div>";
+      var rMetaTbl =
+        '<table class="rmeta"><tbody>' +
+          "<tr><td>Date</td><td>Receipt No.</td></tr>" +
+          '<tr class="v"><td>' + esc(fmtDate(today)) + "</td><td>" + esc(rSaleNo) + "</td></tr>" +
+          '<tr><td colspan="2" class="pm">Paid By</td></tr>' +
+          '<tr class="v"><td colspan="2">' + esc(r.remotePayMethod || "") + "</td></tr>" +
+        "</tbody></table>";
+      var rRtop = '<div class="rtop">' + rSoldTo + rMetaTbl + "</div>";
+
+      var rItem =
+        '<table class="ritem"><thead><tr>' +
+          '<th class="d">Description</th><th class="a">Amount</th>' +
+        "</tr></thead><tbody>" +
+          '<tr><td class="d"><b>Remote Support &mdash; ' + esc(rm.rateLabel) + ' Rate</b>' +
+            '<div class="rdesc">' + rm.hours + " hr &times; " + money(rm.rate) + "/hr" +
+            (r.remoteWork ? "<br>" + esc(r.remoteWork) : "") + "</div>" +
+          '</td><td class="a">' + money(rm.subtotal) + "</td></tr>" +
+        "</tbody></table>";
+      var rTot =
+        '<table class="rtot"><tbody>' +
+          '<tr><td class="l">Subtotal</td><td class="a">' + money(rm.subtotal) + "</td></tr>" +
+          '<tr><td class="l">Sales Tax (7%)</td><td class="a">' + money(rm.tax) + "</td></tr>" +
+          '<tr class="grand"><td class="l">Total Paid</td><td class="a">' + money(rm.total) + "</td></tr>" +
+        "</tbody></table>";
+
+      var rThanks =
+        '<div class="dthx">Thank you for your business!</div>' +
+        '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
+      var rRev = "";
+
+      return head +
+        '<div class="dh-title">REMOTE SUPPORT RECEIPT</div>' +
+        rRtop + rItem + rTot + rRev + rThanks;
+    }
 
     // ===== RECEIPTS (QuickBooks-style) — shared header pieces =====
     if (type === "Drop-Off Receipt" || type === "Final Receipt") {
@@ -1311,16 +1490,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var rtop = '<div class="rtop">' + soldTo + metaTbl + "</div>";
 
       var rrev = "";
-      if (window.__RT_REVIEW_QR) {
-        rrev =
-          '<div class="drev">' +
-            '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
-            '<div class="drev-txt">' +
-              '<div class="drev-h">Enjoyed our service?</div>' +
-              '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
-            "</div>" +
-          "</div>";
-      }
       var thanks =
         '<div class="dthx">Thank you for your business!</div>' +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
@@ -1366,7 +1535,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<table class="rtot"><tbody>' +
           '<tr><td class="l">Subtotal</td><td class="a">' + money(t.plSubtotal) + "</td></tr>" +
           '<tr><td class="l">Sales Tax (7%)</td><td class="a">' + money(t.plTax) + "</td></tr>" +
-          '<tr><td class="l">Less Diagnostic Fee Paid</td><td class="a">&minus;' + money(t.diagCredit) + "</td></tr>" +
+          (t.diagCredit > 0
+            ? '<tr><td class="l">Less Diagnostic Fee Paid</td><td class="a">&minus;' + money(t.diagCredit) + "</td></tr>"
+            : "") +
           '<tr class="grand"><td class="l">Total Due</td><td class="a">' + money(t.finalDue) + "</td></tr>" +
         "</tbody></table>";
 
@@ -1469,21 +1640,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         sign;
     }
 
-    // Footer — Diagnostic Receipt shows review+thanks; others just thanks
-    var reviewBlock = "";
-    if (type === "Diagnostic Receipt" && window.__RT_REVIEW_QR) {
-      reviewBlock =
-        '<div class="drev">' +
-          '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
-          '<div class="drev-txt">' +
-            '<div class="drev-h">Enjoyed our service?</div>' +
-            '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
-          "</div>" +
-        "</div>";
-    }
+    // Footer — review QR now lives in the header; footers just thank
     var footer = "";
     if (type === "Diagnostic Receipt") {
-      footer = reviewBlock +
+      footer =
         '<div class="dthx">Thank you for choosing ' + esc(SHOP.name) + " — your computer\u2019s doctor!</div>" +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
     } else {
@@ -1500,12 +1660,19 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
       "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
       // ----- header -----
-      ".dh{display:flex;align-items:center;gap:16px;padding-bottom:4px}" +
+      ".dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px}" +
+      ".dh-brand{display:flex;align-items:center;gap:14px}" +
+      ".dh-logobox{display:flex;flex-direction:column;align-items:center;flex:0 0 auto}" +
       ".dh-logo{flex:0 0 auto}" +
       ".dh-logo img{display:block!important}" +
-      ".dh-info{flex:1}" +
-      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:25px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;white-space:nowrap;line-height:1.05}" +
-      ".dh-line{font-size:11.5px;color:#555;margin-top:3px}" +
+      ".dh-info{text-align:center}" +
+      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:21px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
+      ".dh-tagline{font-size:12px;font-style:italic;color:#E07B39;margin-top:3px;text-align:center}" +
+      ".dh-line{font-size:11px;color:#555;margin-top:3px}" +
+      ".dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
+      ".dh-review-qr{width:70px!important;height:70px!important;max-width:70px;max-height:70px;flex:0 0 auto;display:block;object-fit:contain}" +
+      ".dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
+      ".dh-review-txt b{color:#1A2E5A;font-size:12px}" +
       ".dh-title{text-align:center;font-size:18px;font-weight:700;letter-spacing:.06em;padding:6px 0;margin:6px 0 12px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
       // ----- field rows -----
       ".drow{display:flex;gap:36px;margin-bottom:10px}" +
