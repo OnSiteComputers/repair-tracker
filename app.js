@@ -23,8 +23,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     apptFee: 25,
     taxRate: 0.07,
     partsMarkup: 35,   // default % markup on parts cost; editable per ticket
-    remoteRegular: 199,   // remote support hourly rate
-    remoteEmergency: 299, // remote support emergency hourly rate
+    remoteRegular: 186.91,   // pre-tax; +7% = $199.99 all-in
+    remoteEmergency: 280.36, // pre-tax; +7% = $299.99 all-in
   };
 
   var STATUSES = [
@@ -43,8 +43,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var BACKUP_STATUS = ["Confirms backed up", "Requests backup service", "Declines backup"];
   var YESNO = ["Yes", "No"];
   var INTAKE_TYPES = ["Appointment", "Walk-in"];
+  var JOB_TYPES = ["Repair", "Remote Support"];
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
-  var REMOTE_RATE_TYPES = ["Regular ($199/hr)", "Emergency ($299/hr)"];
+  var REMOTE_RATE_TYPES = ["Regular ($199.99 total)", "Emergency ($299.99 total)"];
   var REMOTE_PAY = ["Debit", "Credit"];
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
@@ -86,6 +87,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     backupStatus: "backup_status",
     problem: "problem",
     status: "status",
+    jobType: "job_type",
     intakeType: "intake_type",
     waitingOnParts: "waiting_on_parts",
     readyForPickup: "ready_for_pickup",
@@ -118,13 +120,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   function blankRepair() {
     return {
       dateCheckedIn: new Date().toISOString().slice(0, 10),
+      jobType: "Repair",
       customerName: "", phone: "", email: "", address: "", cityStateZip: "",
       preferredContact: "Call", device: "", brandModel: "", serialNumber: "",
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
       partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
-      remoteHours: "", remoteRateType: "Regular ($199/hr)", remoteWork: "", remotePayMethod: "Credit",
+      remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
       completed: false,
     };
   }
@@ -249,7 +252,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   window.__RT = {
     SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE,
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
-    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES,
+    PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES, JOB_TYPES: JOB_TYPES,
     REMOTE_RATE_TYPES: REMOTE_RATE_TYPES, REMOTE_PAY: REMOTE_PAY,
     DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
     WORKING_STATES: WORKING_STATES,
@@ -393,7 +396,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
 
     function paint() {
-      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up"; });
+      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up" && r.jobType !== "Remote Support"; });
       paintStats(active);
       var rows = active.filter(function (r) {
         if (statusFilter === "Active") { if (R.WORKING_STATES.indexOf(r.status) === -1) return false; }
@@ -492,9 +495,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     // header
     // Completed view = Picked Up (or legacy archived). Active = everything else.
+    // Remote Support jobs are kept out of both and shown in their own view.
     function isDone(r) { return r.completed || r.status === "Picked Up"; }
-    var active = state.repairs.filter(function (r) { return !isDone(r); });
-    var completed = state.repairs.filter(isDone);
+    function isRemote(r) { return r.jobType === "Remote Support"; }
+    var remote = state.repairs.filter(isRemote);
+    var active = state.repairs.filter(function (r) { return !isDone(r) && !isRemote(r); });
+    var completed = state.repairs.filter(function (r) { return isDone(r) && !isRemote(r); });
     // header "Active" count = working states only (Ready for Pickup excluded)
     var activeCount = active.filter(function (r) { return WORKING_STATES.indexOf(r.status) !== -1; }).length;
     var hdr = el(
@@ -504,6 +510,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<nav class="nav">' +
           '<button class="tab" data-v="active">Active <span class="ct">' + activeCount + "</span></button>" +
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
+          '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -604,11 +611,17 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var host = document.getElementById("tableHost");
     if (!host) return;
     var isActive = state.view === "active";
+    var isRemoteView = state.view === "remote";
     var isDone = function (r) { return r.completed || r.status === "Picked Up"; };
-    var list = state.repairs.filter(function (r) { return isActive ? !isDone(r) : isDone(r); });
+    var isRemote = function (r) { return r.jobType === "Remote Support"; };
+    var list = state.repairs.filter(function (r) {
+      if (isRemoteView) return isRemote(r);
+      if (isRemote(r)) return false;               // remote jobs never show in active/completed
+      return isActive ? !isDone(r) : isDone(r);
+    });
     var q = state.search.toLowerCase();
     var rows = list.filter(function (r) {
-      var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem]
+      var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem, r.remoteWork]
         .join(" ").toLowerCase().indexOf(q) !== -1;
       var mf;
       if (!isActive || state.statusFilter === "All") mf = true;
@@ -669,8 +682,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           "<td><div class=\"cust\">" + esc(r.customerName || "—") +
             (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
-          "<td><div>" + esc(r.device || "—") + '</div><div class="csub">' + esc(r.brandModel) + "</div></td>" +
-          '<td class="prob">' + esc(r.problem || "—") + "</td>" +
+          "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.device || "—")) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : r.brandModel) + "</div></td>" +
+          '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.problem || "—")) + "</td>" +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
             '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span></td>" +
           '<td class="num">' + (r.estimatedCost ? money(num(r.estimatedCost)) : "—") + "</td>" +
@@ -699,14 +712,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
-      // one-click Final Receipt — only once the job is ready, so no $0 misfires
-      if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
+      // one-click receipt button
+      if (r.jobType === "Remote Support") {
+        // remote jobs are paid up front — receipt always available
+        var rrcpt = el('<button class="ibtn" title="Print Remote Support Receipt">🧾</button>');
+        rrcpt.addEventListener("click", function () { openDoc(r, "Remote Support Receipt"); });
+        acts.appendChild(rrcpt);
+      } else if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
+        // one-click Final Receipt — only once the job is ready, so no $0 misfires
         var rcpt = el('<button class="ibtn" title="Print Sales Receipt">🧾</button>');
         rcpt.addEventListener("click", function () { openDoc(r, "Final Receipt"); });
         acts.appendChild(rcpt);
       }
-      // restore to active (for accidental Picked Up, or archived jobs)
-      if (!isActive) {
+      // restore to active (for accidental Picked Up, or archived jobs) — not for remote
+      if (!isActive && !isRemoteView) {
         var rb = el('<button class="ibtn" title="Send back to active">↩</button>');
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
@@ -912,6 +931,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var R = window.__RT;
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
   var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
+  var JOB_TYPES = R.JOB_TYPES;
   var REMOTE_RATE_TYPES = R.REMOTE_RATE_TYPES, REMOTE_PAY = R.REMOTE_PAY;
   var DEVICES = R.DEVICES, BRANDS = R.BRANDS, CITY_ZIPS = R.CITY_ZIPS, ACCESSORY_OPTS = R.ACCESSORY_OPTS;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals, computeRemote = R.computeRemote;
@@ -979,6 +999,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     var body = el('<div class="mbody"></div>');
     body.innerHTML =
+      section("Job Type",
+        frow(fld("This ticket is a", sel("jobType", JOB_TYPES, r.jobType || "Repair")))
+      ) +
       section("Customer",
         frow(
           fld("Date checked in", dateInp("dateCheckedIn", r.dateCheckedIn)) +
