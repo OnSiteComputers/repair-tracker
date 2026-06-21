@@ -1324,12 +1324,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // Compact header (shared)
     var head =
       '<div class="dh">' +
-        '<div class="dh-logo">' + logoImg(78) + "</div>" +
-        '<div class="dh-info">' +
-          '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
-          '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) +
-            "  &middot;  " + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
-        "</div>" +
+        '<div class="dh-logo">' + logoImg(120) + "</div>" +
+        '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
+        '<div class="dh-tagline">' + esc(SHOP.tagline) + "</div>" +
+        '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) +
+          "  &middot;  " + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
       "</div>";
 
     // ===== REMOTE SUPPORT RECEIPT (paid up front, hours + tax only) =====
@@ -1601,12 +1600,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
       "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
       // ----- header -----
-      ".dh{display:flex;align-items:center;gap:16px;padding-bottom:4px}" +
-      ".dh-logo{flex:0 0 auto}" +
-      ".dh-logo img{display:block!important}" +
-      ".dh-info{flex:1}" +
-      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:25px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;white-space:nowrap;line-height:1.05}" +
-      ".dh-line{font-size:11.5px;color:#555;margin-top:3px}" +
+      ".dh{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;padding-bottom:6px}" +
+      ".dh-logo{flex:0 0 auto;margin-bottom:4px}" +
+      ".dh-logo img{display:block!important;margin:0 auto}" +
+      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:28px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
+      ".dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
+      ".dh-line{font-size:11.5px;color:#555;margin-top:4px}" +
       ".dh-title{text-align:center;font-size:18px;font-weight:700;letter-spacing:.06em;padding:6px 0;margin:6px 0 12px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
       // ----- field rows -----
       ".drow{display:flex;gap:36px;margin-bottom:10px}" +
