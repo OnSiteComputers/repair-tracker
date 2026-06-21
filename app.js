@@ -1174,12 +1174,59 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       page.innerHTML = docHTML(r, type);
     }
     function doPrint() {
-      var w = window.open("", "_blank", "width=850,height=1100");
-      if (!w) { alert("Allow pop-ups to print this document."); return; }
-      w.document.write('<!doctype html><html><head><title>' + esc(type) + " — " + esc(r.customerName) +
-        '</title><style>' + printCSS() + "</style></head><body>" + page.innerHTML + "</body></html>");
-      w.document.close(); w.focus();
-      setTimeout(function () { w.print(); }, 350);
+      // Print via a hidden iframe rather than a pop-up window.
+      // Pop-ups (window.open) are blocked by Safari/iMac and often print
+      // before images load. An iframe prints reliably across browsers.
+      var docMarkup = '<!doctype html><html><head><meta charset="utf-8"><title>' +
+        esc(type) + " — " + esc(r.customerName) +
+        '</title><style>' + printCSS() + "</style></head><body>" +
+        page.innerHTML + "</body></html>";
+
+      var iframe = document.createElement("iframe");
+      iframe.setAttribute("aria-hidden", "true");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+
+      var printed = false;
+      function fire() {
+        if (printed) return;
+        printed = true;
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (e) {
+          alert("Couldn't open the print dialog. Please try again.");
+        }
+        // remove after the dialog has had time to grab the content
+        setTimeout(function () {
+          if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        }, 1000);
+      }
+
+      var idoc = iframe.contentWindow.document;
+      idoc.open();
+      idoc.write(docMarkup);
+      idoc.close();
+
+      // Wait for images (logo, QR) to finish before printing; fall back on a timer.
+      var imgs = idoc.images ? Array.prototype.slice.call(idoc.images) : [];
+      var pending = imgs.filter(function (im) { return !im.complete; }).length;
+      if (pending === 0) {
+        setTimeout(fire, 200);
+      } else {
+        imgs.forEach(function (im) {
+          if (im.complete) return;
+          im.addEventListener("load", function () { pending--; if (pending === 0) fire(); });
+          im.addEventListener("error", function () { pending--; if (pending === 0) fire(); });
+        });
+        // safety net in case an image never resolves
+        setTimeout(fire, 2500);
+      }
     }
     function onEsc(e) { if (e.key === "Escape") close(); }
     document.addEventListener("keydown", onEsc);
