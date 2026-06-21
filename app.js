@@ -1280,7 +1280,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         ".dpage{box-sizing:border-box;overflow:hidden}" +
         ".dpage *{box-sizing:border-box}" +
         ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px;width:100%;max-width:100%}" +
-        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto}" +
+        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto;padding-right:12px;overflow:hidden}" +
         ".dpage .dh-logobox{display:flex;flex-direction:column;align-items:center;flex:0 0 auto}" +
         ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
         ".dpage .dh-info{text-align:center;min-width:0}" +
