@@ -22,7 +22,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     diagFee: 129,
     apptFee: 25,
     taxRate: 0.07,
-    partsMarkup: 35,   // default % markup on parts cost; editable per ticket
   };
 
   var STATUSES = [
@@ -90,7 +89,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     workPerformed: "work_performed",
     diagnosticFeePaid: "diagnostic_fee_paid",
     partsAmount: "parts_amount",
-    partsMarkup: "parts_markup",
     laborAmount: "labor_amount",
     paymentMethod: "payment_method",
     dateCompleted: "date_completed",
@@ -115,7 +113,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
-      partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
+      partsAmount: "", laborAmount: "", paymentMethod: "", dateCompleted: "",
       completed: false,
     };
   }
@@ -134,11 +132,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var rate = SHOP.taxRate;
     var rnd = function (n) { return Math.round(n * 100) / 100; };
 
-    // ----- Parts markup (default 35%, editable per ticket) -----
-    // partsAmount holds your COST; markedParts is what the customer is billed.
-    var markupPct = (r.partsMarkup === "" || r.partsMarkup == null) ? SHOP.partsMarkup : num(r.partsMarkup);
-    var markedParts = rnd(parts * (1 + markupPct / 100));
-
     // ----- Diagnostic fee (taxable) -----
     var diagFee = SHOP.diagFee;                     // 129
     var diagTax = rnd(diagFee * rate);              // 9.03
@@ -152,8 +145,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // diagnostic (taxed) minus any appointment fee already prepaid
     var dropDue = rnd(diagTotal - apptFee);         // appt: 113.03 / walk-in: 138.03
 
-    // ----- Final receipt: marked-up parts & labor taxed, minus full diagnostic already paid -----
-    var plSubtotal = rnd(markedParts + labor);
+    // ----- Final receipt: parts & labor taxed, minus full diagnostic already paid -----
+    var plSubtotal = rnd(parts + labor);
     var plTax = rnd(plSubtotal * rate);
     var plWithTax = rnd(plSubtotal + plTax);
     var diagCredit = diagTotal;                     // 138.03 credited at pickup
@@ -161,12 +154,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     return {
       parts: parts, labor: labor,
-      markupPct: markupPct, markedParts: markedParts,
-      // legacy fields kept for Quote/other docs (now use marked-up parts)
+      // legacy fields kept for Quote/other docs
       diag: r.diagnosticFeePaid === "Yes" ? 0 : diagFee,
-      subtotal: rnd(markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
-      tax: rnd((markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * rate),
-      total: rnd((markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * (1 + rate)),
+      subtotal: rnd(parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
+      tax: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * rate),
+      total: rnd((parts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)) * (1 + rate)),
       // new fee model
       diagFee: diagFee, diagTax: diagTax, diagTotal: diagTotal,
       isAppt: isAppt, apptFee: apptFee, dropDue: dropDue,
@@ -994,8 +986,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ) +
       section("Charges",
         frow(
-          fld("Parts cost", inp("partsAmount", r.partsAmount)) +
-          fld("Parts markup %", inp("partsMarkup", r.partsMarkup)) +
+          fld("Parts amount", inp("partsAmount", r.partsAmount)) +
           fld("Labor amount", inp("laborAmount", r.laborAmount)) +
           fld("Diagnostic fee paid?", sel("diagnosticFeePaid", YESNO, r.diagnosticFeePaid))
         ) +
@@ -1010,7 +1001,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     body.querySelectorAll("[data-k]").forEach(function (node) {
       node.addEventListener("input", function () {
         r[node.getAttribute("data-k")] = node.value;
-        if (["partsAmount", "partsMarkup", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
+        if (["partsAmount", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
           paintTotals();
       });
       node.addEventListener("change", function () {
@@ -1062,9 +1053,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     function paintTotals() {
       var t = computeTotals(r);
       document.getElementById("totalsBox").innerHTML =
-        trow("Parts cost", money(t.parts)) +
-        trow("Parts billed (+" + t.markupPct + "%)", money(t.markedParts)) +
-        trow("Labor", money(t.labor)) +
+        trow("Parts + Labor", money(t.parts + t.labor)) +
         trow("Diagnostic fee" + (r.diagnosticFeePaid === "Yes" ? " (already paid)" : ""), money(t.diag)) +
         trow("Subtotal", money(t.subtotal)) +
         trow("Sales tax (7%)", money(t.tax)) +
