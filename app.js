@@ -1269,7 +1269,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto}" +
         ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
         ".dpage .dh-info{text-align:left;min-width:0}" +
-        ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
+        ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
         ".dpage .dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
         ".dpage .dh-line{font-size:11px;color:#555;margin-top:3px}" +
         ".dpage .dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
@@ -1604,7 +1604,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ".dh-logo{flex:0 0 auto}" +
       ".dh-logo img{display:block!important}" +
       ".dh-info{text-align:left}" +
-      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
+      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:21px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
       ".dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
       ".dh-line{font-size:11px;color:#555;margin-top:3px}" +
       ".dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
