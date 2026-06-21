@@ -1263,10 +1263,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       // on-screen preview stylesheet may not have them yet, so inject just the
       // header rules — scoped to .dpage — so the review QR isn't full size.
       var previewHeaderCSS =
-        ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px}" +
-        ".dpage .dh-brand{display:flex;align-items:center;gap:14px}" +
+        ".dpage{box-sizing:border-box;overflow:hidden}" +
+        ".dpage *{box-sizing:border-box}" +
+        ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px;width:100%;max-width:100%}" +
+        ".dpage .dh-brand{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 auto}" +
         ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
-        ".dpage .dh-info{text-align:left}" +
+        ".dpage .dh-info{text-align:left;min-width:0}" +
         ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
         ".dpage .dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
         ".dpage .dh-line{font-size:11px;color:#555;margin-top:3px}" +
