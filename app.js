@@ -442,7 +442,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
             (hasDetail ?
               '<div class="scard-detail">' +
                 (r.diagnosticFindings && r.diagnosticFindings.trim() ?
-                  '<div class="sd-row"><span class="sd-l">What we found</span>' +
+                  '<div class="sd-row"><span class="sd-l">Our Diagnosis</span>' +
                   '<div class="sd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
                 (r.estimatedCost && String(r.estimatedCost).trim() ?
                   '<div class="sd-row"><span class="sd-l">Estimated cost</span>' +
@@ -701,7 +701,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           tr.classList.add("open");
           var cells =
             (r.diagnosticFindings && r.diagnosticFindings.trim()
-              ? '<div class="rd-row"><span class="rd-l">What we found</span><div class="rd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
+              ? '<div class="rd-row"><span class="rd-l">Our Diagnosis</span><div class="rd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
             (r.estimatedCost && String(r.estimatedCost).trim()
               ? '<div class="rd-row"><span class="rd-l">Estimated cost</span><div class="rd-v">' +
                 esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "");
@@ -1053,7 +1053,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts)) +
           fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
         ) +
-        frow(fld("Diagnostic findings (screen only — not printed)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
+        frow(fld("Our Diagnosis (prints on Diagnostic Receipt)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost))) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
@@ -1578,8 +1578,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       middle = sech("DESCRIPTION OF ISSUE / REQUESTED SERVICE") +
         '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
     } else if (type === "Diagnostic Receipt") {
-      middle = sech("WORK PERFORMED") +
-        '<div class="dbx">' + (r.workPerformed ? esc(r.workPerformed) : "") + "</div>";
+      middle = sech("OUR DIAGNOSIS") +
+        '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
     } else if (type === "Quote") {
       middle = sech("SCOPE OF WORK") +
         '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
