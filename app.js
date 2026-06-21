@@ -1259,7 +1259,22 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       tabs.querySelectorAll(".dtab").forEach(function (b) {
         b.classList.toggle("on", b.textContent === type);
       });
-      page.innerHTML = docHTML(r, type);
+      // The new header rules live in printCSS (used by the print window). The
+      // on-screen preview stylesheet may not have them yet, so inject just the
+      // header rules — scoped to .dpage — so the review QR isn't full size.
+      var previewHeaderCSS =
+        ".dpage .dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px}" +
+        ".dpage .dh-brand{display:flex;align-items:center;gap:14px}" +
+        ".dpage .dh-logo img{display:block;width:110px;height:auto}" +
+        ".dpage .dh-info{text-align:left}" +
+        ".dpage .dh-name{font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;line-height:1.05}" +
+        ".dpage .dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
+        ".dpage .dh-line{font-size:11px;color:#555;margin-top:3px}" +
+        ".dpage .dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
+        ".dpage .dh-review-qr{width:70px;height:70px;max-width:70px;max-height:70px;flex:0 0 auto;display:block;object-fit:contain}" +
+        ".dpage .dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
+        ".dpage .dh-review-txt b{color:#1A2E5A;font-size:12px}";
+      page.innerHTML = '<style>' + previewHeaderCSS + "</style>" + docHTML(r, type);
     }
     function doPrint() {
       var w = window.open("", "_blank", "width=850,height=1100");
@@ -1591,7 +1606,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       ".dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
       ".dh-line{font-size:11px;color:#555;margin-top:3px}" +
       ".dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
-      ".dh-review-qr{width:70px;height:70px;flex:0 0 auto;display:block}" +
+      ".dh-review-qr{width:70px!important;height:70px!important;max-width:70px;max-height:70px;flex:0 0 auto;display:block;object-fit:contain}" +
       ".dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
       ".dh-review-txt b{color:#1A2E5A;font-size:12px}" +
       ".dh-title{text-align:center;font-size:18px;font-weight:700;letter-spacing:.06em;padding:6px 0;margin:6px 0 12px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
