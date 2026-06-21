@@ -1321,14 +1321,27 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       "Remote Support Receipt": "REMOTE SUPPORT RECEIPT",
     };
 
-    // Compact header (shared)
+    // Compact header (shared) — brand centered, review QR on the right flank
+    var headReview = "";
+    if (window.__RT_REVIEW_QR) {
+      headReview =
+        '<div class="dh-review">' +
+          '<img class="dh-review-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a Google review" />' +
+          '<div class="dh-review-txt">Happy with our service?<br><b>Leave us a review on Google</b></div>' +
+        "</div>";
+    }
     var head =
       '<div class="dh">' +
-        '<div class="dh-logo">' + logoImg(120) + "</div>" +
-        '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
-        '<div class="dh-tagline">' + esc(SHOP.tagline) + "</div>" +
-        '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) +
-          "  &middot;  " + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
+        '<div class="dh-brand">' +
+          '<div class="dh-logo">' + logoImg(110) + "</div>" +
+          '<div class="dh-info">' +
+            '<div class="dh-name">' + esc(SHOP.name) + "</div>" +
+            '<div class="dh-tagline">' + esc(SHOP.tagline) + "</div>" +
+            '<div class="dh-line">' + esc(SHOP.address) + ", " + esc(SHOP.cityzip) + "</div>" +
+            '<div class="dh-line">' + esc(SHOP.phone) + "  &middot;  " + esc(SHOP.web) + "</div>" +
+          "</div>" +
+        "</div>" +
+        headReview +
       "</div>";
 
     // ===== REMOTE SUPPORT RECEIPT (paid up front, hours + tax only) =====
@@ -1372,16 +1385,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<div class="dthx">Thank you for your business!</div>' +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
       var rRev = "";
-      if (window.__RT_REVIEW_QR) {
-        rRev =
-          '<div class="drev">' +
-            '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
-            '<div class="drev-txt">' +
-              '<div class="drev-h">Enjoyed our service?</div>' +
-              '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
-            "</div>" +
-          "</div>";
-      }
 
       return head +
         '<div class="dh-title">REMOTE SUPPORT RECEIPT</div>' +
@@ -1409,16 +1412,6 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       var rtop = '<div class="rtop">' + soldTo + metaTbl + "</div>";
 
       var rrev = "";
-      if (window.__RT_REVIEW_QR) {
-        rrev =
-          '<div class="drev">' +
-            '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
-            '<div class="drev-txt">' +
-              '<div class="drev-h">Enjoyed our service?</div>' +
-              '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
-            "</div>" +
-          "</div>";
-      }
       var thanks =
         '<div class="dthx">Thank you for your business!</div>' +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
@@ -1569,21 +1562,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         sign;
     }
 
-    // Footer — Diagnostic Receipt shows review+thanks; others just thanks
-    var reviewBlock = "";
-    if (type === "Diagnostic Receipt" && window.__RT_REVIEW_QR) {
-      reviewBlock =
-        '<div class="drev">' +
-          '<img class="drev-qr" src="' + window.__RT_REVIEW_QR + '" alt="Scan to leave a review" />' +
-          '<div class="drev-txt">' +
-            '<div class="drev-h">Enjoyed our service?</div>' +
-            '<div class="drev-s">Scan the code to leave us a Google review — it really helps!</div>' +
-          "</div>" +
-        "</div>";
-    }
+    // Footer — review QR now lives in the header; footers just thank
     var footer = "";
     if (type === "Diagnostic Receipt") {
-      footer = reviewBlock +
+      footer =
         '<div class="dthx">Thank you for choosing ' + esc(SHOP.name) + " — your computer\u2019s doctor!</div>" +
         '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
     } else {
@@ -1600,12 +1582,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return "@page{size:letter;margin:0.5in}*{margin:0;padding:0;box-sizing:border-box}" +
       "body{font-family:'Inter',-apple-system,'Segoe UI',sans-serif;color:#0B0B0C;-webkit-print-color-adjust:exact;print-color-adjust:exact}svg{display:block}" +
       // ----- header -----
-      ".dh{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;padding-bottom:6px}" +
-      ".dh-logo{flex:0 0 auto;margin-bottom:4px}" +
-      ".dh-logo img{display:block!important;margin:0 auto}" +
-      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:28px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
+      ".dh{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:6px}" +
+      ".dh-brand{display:flex;align-items:center;gap:14px}" +
+      ".dh-logo{flex:0 0 auto}" +
+      ".dh-logo img{display:block!important}" +
+      ".dh-info{text-align:left}" +
+      ".dh-name{font-family:Arial,Helvetica,'Inter',sans-serif;font-size:26px;font-weight:700;color:#0B0B0C;letter-spacing:-.01em;line-height:1.05}" +
       ".dh-tagline{font-size:13px;font-style:italic;color:#E07B39;margin-top:1px}" +
-      ".dh-line{font-size:11.5px;color:#555;margin-top:4px}" +
+      ".dh-line{font-size:11px;color:#555;margin-top:3px}" +
+      ".dh-review{display:flex;align-items:center;gap:10px;flex:0 0 auto;border:1.5px solid #1A2E5A;border-radius:8px;background:#FAF8F3;padding:8px 12px}" +
+      ".dh-review-qr{width:70px;height:70px;flex:0 0 auto;display:block}" +
+      ".dh-review-txt{font-size:11.5px;color:#555;text-align:left;line-height:1.4;max-width:120px}" +
+      ".dh-review-txt b{color:#1A2E5A;font-size:12px}" +
       ".dh-title{text-align:center;font-size:18px;font-weight:700;letter-spacing:.06em;padding:6px 0;margin:6px 0 12px;border-top:3px solid #0B0B0C;border-bottom:3px solid #0B0B0C}" +
       // ----- field rows -----
       ".drow{display:flex;gap:36px;margin-bottom:10px}" +
