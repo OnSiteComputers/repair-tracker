@@ -80,6 +80,7 @@ thead th:first-child{border-top-left-radius:12px}
 thead th:last-child{border-top-right-radius:12px}
 thead th.sortable{cursor:pointer; user-select:none}
 thead th.sortable:hover{color:var(--navy)}
+thead th.sortable.on{color:var(--navy)}
 thead th .sarrow{color:var(--navy2); font-weight:700}
 th.num,td.num{text-align:right}
 th.ah{text-align:right}
@@ -147,6 +148,18 @@ tr.detailrow td{padding:0 16px 14px}
 .acc-box input{width:auto !important; margin:0; cursor:pointer}
 .acc-other{flex:1 1 180px; min-width:160px; padding:7px 10px !important; border:1px solid var(--line) !important; border-radius:7px !important; font-size:13.5px !important}
 .combo-other{font-size:13.5px}
+
+/* Service photos in the editor */
+.photoblock{padding-top:4px}
+.photo-actions{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.photo-hint{font-size:12.5px; color:var(--navy2)}
+.photo-grid{display:flex; flex-wrap:wrap; gap:12px; margin-top:12px}
+.photo-empty{font-size:13px; color:#888; font-style:italic}
+.photo-cell{position:relative; width:128px; height:128px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#FAF8F3}
+.photo-thumb{width:100%; height:100%; background-size:cover; background-position:center; background-repeat:no-repeat; display:flex; align-items:center; justify-content:center; font-size:11px; color:#999}
+.photo-del{position:absolute; top:5px; right:5px; width:24px; height:24px; border:none; border-radius:50%; background:rgba(11,11,12,.72); color:#fff; font-size:13px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center}
+.photo-del:hover{background:#B00020}
+.photo-del:disabled{opacity:.5; cursor:default}
 
 .totals{background:#FAF8F3; border:1px solid var(--line); border-radius:10px; padding:13px 16px; margin-top:6px}
 .trow{display:flex; justify-content:space-between; font-size:14px; padding:4px 0; color:#444}

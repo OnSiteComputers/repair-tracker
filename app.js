@@ -68,6 +68,34 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   ];
   var ACCESSORY_OPTS = ["Charger", "USB Drive", "External Hard Drive"];
 
+  // ---------- Remembered dropdown values (Supabase: list_options) ----------
+  // Maps an app field key -> the live list array it should extend.
+  // When you type a value via "Other…", it's saved to list_options and
+  // merged into these arrays so it shows up everywhere, on any machine.
+  var LIST_FOR_KEY = {
+    device: DEVICES,
+    brandModel: BRANDS,
+    cityStateZip: CITY_ZIPS,
+    accessories: ACCESSORY_OPTS,
+  };
+  // Track which values came from the DB (so we can offer to remove just those).
+  var REMEMBERED = { device: {}, brandModel: {}, cityStateZip: {}, accessories: {} };
+
+  function mergeOption(key, value) {
+    value = (value == null ? "" : String(value)).trim();
+    if (!value) return false;
+    var list = LIST_FOR_KEY[key];
+    if (!list) return false;
+    // case-insensitive dedupe against what's already there
+    var low = value.toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i]).toLowerCase() === low) return false;
+    }
+    list.push(value);
+    list.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+    return true;
+  }
+
   // ---------- DB column map (snake_case in Supabase) ----------
   // app field  ->  db column
   var FIELDS = {
@@ -103,17 +131,38 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     partsMarkup: "parts_markup",
     laborAmount: "labor_amount",
     paymentMethod: "payment_method",
+    photoUrls: "photo_urls",
     dateCompleted: "date_completed",
     completed: "completed",
   };
   function toRow(o) {
     var r = {};
-    for (var k in FIELDS) if (o[k] !== undefined) r[FIELDS[k]] = o[k] === "" ? null : o[k];
+    for (var k in FIELDS) {
+      if (o[k] === undefined) continue;
+      if (k === "photoUrls") {
+        // jsonb array — keep as an array; empty array if blank
+        var pv = o[k];
+        if (pv === "" || pv == null) pv = [];
+        if (!Array.isArray(pv)) { try { pv = JSON.parse(pv); } catch (e) { pv = []; } }
+        r[FIELDS[k]] = pv;
+        continue;
+      }
+      r[FIELDS[k]] = o[k] === "" ? null : o[k];
+    }
     return r;
   }
   function fromRow(row) {
     var o = {};
-    for (var k in FIELDS) o[k] = row[FIELDS[k]] == null ? "" : row[FIELDS[k]];
+    for (var k in FIELDS) {
+      if (k === "photoUrls") {
+        var pv = row[FIELDS[k]];
+        if (pv == null) pv = [];
+        else if (!Array.isArray(pv)) { try { pv = JSON.parse(pv); } catch (e) { pv = []; } }
+        o[k] = pv;
+        continue;
+      }
+      o[k] = row[FIELDS[k]] == null ? "" : row[FIELDS[k]];
+    }
     return o;
   }
 
@@ -128,6 +177,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
       partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
+      photoUrls: [],
       completed: false,
     };
   }
@@ -255,6 +305,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES, JOB_TYPES: JOB_TYPES,
     REMOTE_RATE_TYPES: REMOTE_RATE_TYPES, REMOTE_PAY: REMOTE_PAY,
     DEVICES: DEVICES, BRANDS: BRANDS, CITY_ZIPS: CITY_ZIPS, ACCESSORY_OPTS: ACCESSORY_OPTS,
+    LIST_FOR_KEY: LIST_FOR_KEY, REMEMBERED: REMEMBERED, mergeOption: mergeOption,
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote,
@@ -283,6 +334,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     search: "",
     statusFilter: "All",
     dateSortDir: "desc",  // desc = newest first, asc = oldest first
+    sortKey: "date",      // "date" (checked-in) or "name" (customer)
     authed: false,
   };
 
@@ -316,6 +368,118 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   }
   function deleteRepair(id) {
     return sb.from("repairs").delete().eq("id", id).then(function (res) {
+      if (res.error) throw res.error; return true;
+    });
+  }
+
+  // ---------- Remembered dropdown values ----------
+  var LIST_FOR_KEY = R.LIST_FOR_KEY, REMEMBERED = R.REMEMBERED, mergeOption = R.mergeOption;
+
+  function loadListOptions() {
+    if (!sb) return Promise.resolve();
+    return sb.from("list_options").select("list_key,value").then(function (res) {
+      if (res.error) { console.error(res.error); return; }
+      (res.data || []).forEach(function (row) {
+        if (mergeOption(row.list_key, row.value)) {
+          if (REMEMBERED[row.list_key]) REMEMBERED[row.list_key][row.value] = true;
+        } else if (REMEMBERED[row.list_key]) {
+          // still mark as remembered even if it duplicated a default, so removal logic is consistent
+          REMEMBERED[row.list_key][row.value] = true;
+        }
+      });
+    });
+  }
+
+  // Save any newly-typed "Other…" values from a record to list_options.
+  function rememberFromRecord(rec) {
+    if (!sb) return Promise.resolve();
+    var rows = [];
+    Object.keys(LIST_FOR_KEY).forEach(function (key) {
+      var raw = rec[key];
+      if (!raw) return;
+      // accessories is a comma-joined string of possibly several values
+      var vals = key === "accessories"
+        ? String(raw).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+        : [String(raw).trim()];
+      vals.forEach(function (v) {
+        if (!v) return;
+        if (REMEMBERED[key] && REMEMBERED[key][v]) return; // already saved
+        var list = LIST_FOR_KEY[key], low = v.toLowerCase(), already = false;
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i]).toLowerCase() === low && !(REMEMBERED[key] && REMEMBERED[key][list[i]])) {
+            already = true; break; // it's a built-in default — don't store
+          }
+        }
+        if (already) return;
+        rows.push({ list_key: key, value: v });
+      });
+    });
+    if (!rows.length) return Promise.resolve();
+    // upsert so the unique(list_key,value) constraint can't error on a re-add
+    return sb.from("list_options").upsert(rows, { onConflict: "list_key,value", ignoreDuplicates: true })
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return; }
+        rows.forEach(function (rw) {
+          mergeOption(rw.list_key, rw.value);
+          if (REMEMBERED[rw.list_key]) REMEMBERED[rw.list_key][rw.value] = true;
+        });
+      });
+  }
+
+  function forgetOption(key, value) {
+    if (!sb) return Promise.resolve();
+    return sb.from("list_options").delete().eq("list_key", key).eq("value", value)
+      .then(function (res) {
+        if (res.error) throw res.error;
+        var list = LIST_FOR_KEY[key];
+        if (list) {
+          var i = list.indexOf(value);
+          if (i !== -1) list.splice(i, 1);
+        }
+        if (REMEMBERED[key]) delete REMEMBERED[key][value];
+        return true;
+      });
+  }
+
+  // ---------- Service photos (Supabase Storage: private bucket) ----------
+  var PHOTO_BUCKET = "service-photos";
+
+  // Upload a File to the bucket; returns the stored object path.
+  function uploadPhoto(recId, file) {
+    if (!sb) return Promise.reject(new Error("Not connected"));
+    var folder = recId || "unsaved";
+    var safe = (file.name || "photo").replace(/[^A-Za-z0-9._-]/g, "_");
+    var path = folder + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + "_" + safe;
+    return sb.storage.from(PHOTO_BUCKET).upload(path, file, {
+      cacheControl: "3600", upsert: false, contentType: file.type || "image/jpeg",
+    }).then(function (res) {
+      if (res.error) throw res.error;
+      return path;
+    });
+  }
+
+  // Mint a short-lived signed URL so a private image can render (for preview or print).
+  function signPhoto(path, seconds) {
+    if (!sb) return Promise.resolve(null);
+    return sb.storage.from(PHOTO_BUCKET).createSignedUrl(path, seconds || 120)
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return null; }
+        return res.data && res.data.signedUrl ? res.data.signedUrl : null;
+      });
+  }
+
+  function signPhotos(paths, seconds) {
+    if (!sb || !paths || !paths.length) return Promise.resolve([]);
+    return sb.storage.from(PHOTO_BUCKET).createSignedUrls(paths, seconds || 120)
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return []; }
+        return (res.data || []).map(function (d) { return d.signedUrl || null; });
+      });
+  }
+
+  function deletePhoto(path) {
+    if (!sb) return Promise.resolve();
+    return sb.storage.from(PHOTO_BUCKET).remove([path]).then(function (res) {
       if (res.error) throw res.error; return true;
     });
   }
@@ -473,13 +637,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       });
     }
     refresh();
-    // live updates via Supabase realtime, plus a 30s safety poll
+    if (window.__RT.mgmt && window.__RT.mgmt.loadListOptions) window.__RT.mgmt.loadListOptions();
+    // live updates via Supabase realtime, plus a 15s safety poll
     try {
       sb.channel("repairs-status")
         .on("postgres_changes", { event: "*", schema: "public", table: "repairs" }, refresh)
         .subscribe();
     } catch (e) { /* realtime optional */ }
-    setInterval(refresh, 30000);
+    setInterval(refresh, 15000);
   }
 
   // =====================================================================
@@ -630,10 +795,17 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       return ms && mf;
     });
 
-    // sort by check-in date in the chosen direction; id breaks ties consistently
+    // sort by the chosen column + direction; id breaks ties consistently
     var dir = state.dateSortDir === "asc" ? -1 : 1;
     rows.sort(function (a, b) {
-      var c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      var c;
+      if (state.sortKey === "name") {
+        c = String(b.customerName || "").localeCompare(String(a.customerName || ""),
+              undefined, { sensitivity: "base" });
+        if (c === 0) c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      } else {
+        c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      }
       if (c !== 0) return c * dir;
       return String(b.id || "").localeCompare(String(a.id || "")) * dir;
     });
@@ -658,17 +830,32 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }
 
     var tw = el('<div class="tablewrap"></div>');
-    var arrow = state.dateSortDir === "asc" ? " ↑" : " ↓";
+    var dateArrow = state.sortKey === "date" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
+    var nameArrow = state.sortKey === "name" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
     var table = el(
       "<table><thead><tr>" +
-        '<th class="sortable" data-sortdate="1">Checked in<span class="sarrow">' + arrow + "</span></th>" +
-        "<th>Customer</th><th>Device</th><th>Problem</th>" +
+        '<th class="sortable' + (state.sortKey === "date" ? " on" : "") + '" data-sortdate="1">Checked in<span class="sarrow">' + dateArrow + "</span></th>" +
+        '<th class="sortable' + (state.sortKey === "name" ? " on" : "") + '" data-sortname="1">Customer<span class="sarrow">' + nameArrow + "</span></th>" +
+        "<th>Device</th><th>Problem</th>" +
         '<th>Status</th><th class="num">Est. cost</th><th class="ah">Actions</th>' +
       "</tr></thead><tbody></tbody></table>"
     );
     var dateHdr = table.querySelector("[data-sortdate]");
     dateHdr.addEventListener("click", function () {
-      state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+      if (state.sortKey === "date") {
+        state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+      } else {
+        state.sortKey = "date"; state.dateSortDir = "desc"; // newest first by default
+      }
+      paintTable();
+    });
+    var nameHdr = table.querySelector("[data-sortname]");
+    nameHdr.addEventListener("click", function () {
+      if (state.sortKey === "name") {
+        state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+      } else {
+        state.sortKey = "name"; state.dateSortDir = "asc"; // A→Z by default
+      }
       paintTable();
     });
     var tbody = table.querySelector("tbody");
@@ -794,6 +981,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   window.__RT.mgmt = {
     state: state, toast: toast, loadRepairs: loadRepairs, saveRepair: saveRepair,
     deleteRepair: deleteRepair, renderApp: renderApp, clearSearchAndFilter: clearSearchAndFilter,
+    loadListOptions: loadListOptions, rememberFromRecord: rememberFromRecord, forgetOption: forgetOption,
+    uploadPhoto: uploadPhoto, signPhoto: signPhoto, signPhotos: signPhotos, deletePhoto: deletePhoto,
   };
 
   // ---------- login (real Supabase Auth: email + password) ----------
@@ -866,6 +1055,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   }
 
   function loadAndRender() {
+    // Load remembered dropdown values alongside repairs (don't block on it).
+    loadListOptions();
     loadRepairs().then(function () {
       state.loading = false;
       renderApp();
@@ -875,8 +1066,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
             loadRepairs().then(function () {
               if (!document.querySelector(".overlay")) renderApp();
             });
-          }).subscribe();
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "list_options" }, function () {
+            loadListOptions();
+          })
+          .subscribe();
       } catch (e) {}
+      // Safety poll: realtime can drop or be disabled; this keeps the sheet fresh.
+      // Skipped while a modal is open so it never yanks the form out from under you.
+      setInterval(function () {
+        if (document.querySelector(".overlay")) return;
+        loadRepairs().then(function () {
+          if (!document.querySelector(".overlay")) renderApp();
+        }).catch(function () {});
+      }, 15000);
     }).catch(function (e) {
       app.innerHTML = "";
       app.appendChild(el('<div class="banner err">Couldn’t load repairs from the database. ' +
@@ -1057,6 +1260,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         frow(fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost))) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
+      section("Photos (print on Diagnostic & Final receipts)",
+        '<div class="photoblock">' +
+          '<div class="photo-actions">' +
+            '<button type="button" class="btn btn-gho btn-sm" data-photoadd>Browse / Add Photo…</button>' +
+            '<input type="file" accept="image/*" multiple data-photoinput style="display:none" />' +
+            '<span class="photo-hint" data-photohint></span>' +
+          '</div>' +
+          '<div class="photo-grid" data-photogrid></div>' +
+        '</div>'
+      ) +
       section("Charges",
         frow(
           fld("Parts cost", inp("partsAmount", r.partsAmount)) +
@@ -1136,6 +1349,80 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       otherInput.addEventListener("input", sync);
     })();
 
+    // ---- Photos: browse -> upload to Storage, show thumbnails, delete ----
+    (function () {
+      var grid = body.querySelector("[data-photogrid]");
+      var input = body.querySelector("[data-photoinput]");
+      var addBtn = body.querySelector("[data-photoadd]");
+      var hint = body.querySelector("[data-photohint]");
+      if (!grid || !input || !addBtn) return;
+      if (!Array.isArray(r.photoUrls)) r.photoUrls = [];
+
+      function setHint(msg) { if (hint) hint.textContent = msg || ""; }
+
+      function paintGrid() {
+        grid.innerHTML = "";
+        if (!r.photoUrls.length) {
+          grid.innerHTML = '<div class="photo-empty">No photos attached yet.</div>';
+          return;
+        }
+        r.photoUrls.forEach(function (path, idx) {
+          var cell = el('<div class="photo-cell"><div class="photo-thumb" data-thumb></div>' +
+            '<button type="button" class="photo-del" title="Remove photo">✕</button></div>');
+          var delBtn = cell.querySelector(".photo-del");
+          delBtn.addEventListener("click", function () {
+            if (!confirm("Remove this photo? It will be deleted from storage.")) return;
+            delBtn.disabled = true;
+            M.deletePhoto(path).then(function () {
+              var i = r.photoUrls.indexOf(path);
+              if (i !== -1) r.photoUrls.splice(i, 1);
+              // persist the removal immediately if this is an existing record
+              if (!isNew && r.id) return M.saveRepair({ id: r.id, photoUrls: r.photoUrls });
+            }).then(function () { paintGrid(); })
+              .catch(function (e) { delBtn.disabled = false; M.toast("Couldn’t remove photo"); console.error(e); });
+          });
+          grid.appendChild(cell);
+          // sign + show thumbnail
+          M.signPhoto(path, 300).then(function (url) {
+            var box = cell.querySelector("[data-thumb]");
+            if (url && box) box.style.backgroundImage = "url('" + url + "')";
+            else if (box) box.textContent = "(image)";
+          });
+        });
+      }
+
+      addBtn.addEventListener("click", function () { input.click(); });
+
+      input.addEventListener("change", function () {
+        var files = Array.prototype.slice.call(input.files || []);
+        input.value = ""; // allow re-selecting the same file later
+        if (!files.length) return;
+        addBtn.disabled = true;
+        setHint("Uploading " + files.length + " photo" + (files.length > 1 ? "s" : "") + "…");
+        var chain = Promise.resolve();
+        var added = [];
+        files.forEach(function (f) {
+          chain = chain.then(function () {
+            return M.uploadPhoto(r.id, f).then(function (path) {
+              r.photoUrls.push(path); added.push(path);
+            });
+          });
+        });
+        chain.then(function () {
+          // persist right away for existing records so it's saved even if they don't hit Save
+          if (!isNew && r.id && added.length) return M.saveRepair({ id: r.id, photoUrls: r.photoUrls });
+        }).then(function () {
+          setHint(""); addBtn.disabled = false; paintGrid();
+          M.toast(added.length + " photo" + (added.length > 1 ? "s" : "") + " added");
+        }).catch(function (e) {
+          setHint(""); addBtn.disabled = false; paintGrid();
+          M.toast("Upload failed — " + (e.message || "error")); console.error(e);
+        });
+      });
+
+      paintGrid();
+    })();
+
     function paintTotals() {
       var t = computeTotals(r);
       var diagPaid = (r.diagnosticFeePaid === "Yes");
@@ -1192,7 +1479,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var save = el('<button class="btn btn-pri">' + (isNew ? "Add repair" : "Save changes") + "</button>");
     save.addEventListener("click", function () {
       save.disabled = true; save.textContent = "Saving…";
-      M.saveRepair(r).then(M.loadRepairs).then(function () {
+      M.saveRepair(r).then(function () {
+        // Remember any newly typed dropdown values (city, device, brand, accessories).
+        return M.rememberFromRecord(r);
+      }).then(M.loadRepairs).then(function () {
         // After adding a new repair, clear any leftover search/filter so it's visible
         if (isNew) M.clearSearchAndFilter();
         M.toast(isNew ? "Repair added" : "Repair updated"); close(); M.renderApp();
@@ -1294,13 +1584,50 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       page.innerHTML = '<style>' + previewHeaderCSS + "</style>" + docHTML(r, type);
     }
     function doPrint() {
+      // Photos print on the Diagnostic and Final receipts only.
+      var wantsPhotos = (type === "Diagnostic Receipt" || type === "Final Receipt") &&
+        Array.isArray(r.photoUrls) && r.photoUrls.length > 0;
+
+      if (!wantsPhotos) { doPrintWith(""); return; }
+
+      // Sign the private photos so they can load into the print view, then build
+      // a photo block. Each photo avoids splitting across pages, so it either
+      // fills the space left at the bottom or flows to the next page.
+      var M = window.__RT.mgmt;
+      M.signPhotos(r.photoUrls, 300).then(function (urls) {
+        var valid = (urls || []).filter(Boolean);
+        if (!valid.length) { doPrintWith(""); return; }
+        var imgs = valid.map(function (u) {
+          return '<div class="ph-shot"><img src="' + u + '" alt="Repair photo" /></div>';
+        }).join("");
+        var block =
+          '<div class="ph-wrap">' +
+            '<div class="ph-head">Photos</div>' +
+            imgs +
+          "</div>";
+        doPrintWith(block);
+      }).catch(function (e) { console.error(e); doPrintWith(""); });
+    }
+
+    function doPrintWith(photoBlock) {
       // Print via a hidden iframe rather than a pop-up window.
       // Pop-ups (window.open) get blocked and often print before images load.
       // An iframe prints reliably across browsers (Chrome, Safari/iMac, etc).
+      var photoCSS =
+        ".ph-wrap{margin-top:14px}" +
+        ".ph-head{font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;" +
+          "color:#0B0B0C;border-bottom:1.5px solid #1A2E5A;padding-bottom:3px;margin-bottom:10px}" +
+        // each photo block won't break across a page; if it doesn't fit, it moves to the next page
+        ".ph-shot{break-inside:avoid;page-break-inside:avoid;text-align:center;margin:0 0 12px}" +
+        // sized as large as it'll fit: full print width, capped so a single shot
+        // can't exceed the usable page height (about 8in tall inside 0.5in margins)
+        ".ph-shot img{display:block;width:100%;max-width:7.5in;height:auto;" +
+          "max-height:8.6in;object-fit:contain;margin:0 auto;border:1px solid #ccc}";
+
       var docMarkup = '<!doctype html><html><head><meta charset="utf-8"><title>' +
         esc(type) + " — " + esc(r.customerName) +
-        '</title><style>' + printCSS() + "</style></head><body>" +
-        page.innerHTML + "</body></html>";
+        '</title><style>' + printCSS() + photoCSS + "</style></head><body>" +
+        page.innerHTML + (photoBlock || "") + "</body></html>";
 
       var iframe = document.createElement("iframe");
       iframe.setAttribute("aria-hidden", "true");
@@ -1342,7 +1669,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           im.addEventListener("load", function () { pending--; if (pending === 0) fire(); });
           im.addEventListener("error", function () { pending--; if (pending === 0) fire(); });
         });
-        setTimeout(fire, 2500);
+        // photos can be large; give them a bit longer before forcing the dialog
+        setTimeout(fire, 6000);
       }
     }
     function onEsc(e) { if (e.key === "Escape") close(); }
