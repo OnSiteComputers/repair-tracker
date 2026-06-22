@@ -212,7 +212,12 @@ tr.detailrow td{padding:0 16px 14px}
 .sd-l{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--navy2); font-weight:700; margin-bottom:3px}
 .sd-v{font-size:14px; color:var(--ink); line-height:1.45; white-space:pre-wrap}
 .sd-photos{display:flex; flex-wrap:wrap; gap:8px}
-.sd-thumb{width:96px; height:96px; border:1px solid var(--line); border-radius:8px; background-size:cover; background-position:center; background-repeat:no-repeat; background-color:#FAF8F3}
+.sd-thumb{width:96px; height:96px; border:1px solid var(--line); border-radius:8px; background-size:cover; background-position:center; background-repeat:no-repeat; background-color:#FAF8F3; cursor:pointer; transition:transform .08s ease, box-shadow .08s ease}
+.sd-thumb:hover{transform:scale(1.03); box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.photo-ov{position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.85); display:flex; align-items:center; justify-content:center; padding:24px; cursor:zoom-out}
+.photo-ov-img{max-width:95vw; max-height:92vh; object-fit:contain; border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.photo-ov-x{position:fixed; top:18px; right:22px; width:42px; height:42px; border:none; border-radius:50%; background:rgba(255,255,255,.15); color:#fff; font-size:20px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center}
+.photo-ov-x:hover{background:rgba(255,255,255,.3)}
 .sempty{background:#fff; border:1px solid var(--line); border-radius:12px; padding:46px 24px; text-align:center; color:var(--muted)}
 .sstats-host{margin-bottom:14px}
 .stoolrow{display:flex; gap:10px; margin-bottom:14px; align-items:stretch}

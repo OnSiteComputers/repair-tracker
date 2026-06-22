@@ -508,6 +508,30 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     toolRow.appendChild(sInput);
     toolRow.appendChild(sortBtn);
     var listWrap = el('<div class="scards"></div>');
+    // Remember which cards are expanded (by ticket id) so the 15s refresh
+    // doesn't collapse a card Linda is reading.
+    var openCards = {};
+
+    // Full-size photo viewer — opens inside this window (works in the installed
+    // desktop app and any browser; no popup blocker, no second window).
+    function openPhotoOverlay(url) {
+      if (!url) return;
+      var ov = el('<div class="photo-ov"><img class="photo-ov-img" alt="Repair photo" />' +
+        '<button class="photo-ov-x" title="Close">✕</button></div>');
+      var img = ov.querySelector(".photo-ov-img");
+      img.src = url;
+      function close() {
+        document.removeEventListener("keydown", onKey);
+        if (ov.parentNode) ov.parentNode.removeChild(ov);
+      }
+      function onKey(e) { if (e.key === "Escape") close(); }
+      ov.addEventListener("click", close); // click anywhere (backdrop or image) closes
+      ov.querySelector(".photo-ov-x").addEventListener("click", function (e) {
+        e.stopPropagation(); close();
+      });
+      document.addEventListener("keydown", onKey);
+      document.body.appendChild(ov);
+    }
     wrap.appendChild(statsHost);
     wrap.appendChild(toolRow);
     wrap.appendChild(updated);
@@ -620,10 +644,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           "</div>"
         );
         if (hasDetail) {
+          // restore expansion if this card was open before the refresh
+          if (r.id && openCards[r.id]) card.classList.add("open");
           var main = card.querySelector(".scard-main");
           main.style.cursor = "pointer";
           main.addEventListener("click", function () {
             card.classList.toggle("open");
+            if (r.id) {
+              if (card.classList.contains("open")) openCards[r.id] = true;
+              else delete openCards[r.id];
+            }
           });
         }
         // Fill in photo thumbnails (private bucket -> short-lived signed URLs).
@@ -631,10 +661,23 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           var box = card.querySelector("[data-scardphotos]");
           if (box && window.__RT.mgmt && window.__RT.mgmt.signPhotos) {
             window.__RT.mgmt.signPhotos(photos, 300).then(function (urls) {
-              (urls || []).forEach(function (u) {
+              (urls || []).forEach(function (u, idx) {
                 if (!u) return;
                 var th = el('<div class="sd-thumb"></div>');
                 th.style.backgroundImage = "url('" + u + "')";
+                th.title = "Click to enlarge";
+                th.addEventListener("click", function (e) {
+                  e.stopPropagation(); // don't toggle the card
+                  // mint a FRESH signed URL on click so it never opens a stale/expired link
+                  var path = photos[idx];
+                  if (window.__RT.mgmt.signPhoto) {
+                    window.__RT.mgmt.signPhoto(path, 300).then(function (fresh) {
+                      openPhotoOverlay(fresh || u);
+                    }).catch(function () { openPhotoOverlay(u); });
+                  } else {
+                    openPhotoOverlay(u);
+                  }
+                });
                 box.appendChild(th);
               });
             });
