@@ -587,8 +587,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       }
       rows.forEach(function (r) {
         var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
+        var photos = Array.isArray(r.photoUrls) ? r.photoUrls : [];
         var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
-                        (r.estimatedCost && String(r.estimatedCost).trim());
+                        (r.estimatedCost && String(r.estimatedCost).trim()) ||
+                        photos.length > 0;
         var card = el(
           '<div class="scard' + (hasDetail ? " has-detail" : "") + '" style="border-left-color:' + st.dot + '">' +
             '<div class="scard-main">' +
@@ -611,6 +613,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
                 (r.estimatedCost && String(r.estimatedCost).trim() ?
                   '<div class="sd-row"><span class="sd-l">Estimated cost</span>' +
                   '<div class="sd-v">' + esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "") +
+                (photos.length ?
+                  '<div class="sd-row"><span class="sd-l">Photos</span>' +
+                  '<div class="sd-photos" data-scardphotos></div></div>' : "") +
               "</div>" : "") +
           "</div>"
         );
@@ -620,6 +625,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           main.addEventListener("click", function () {
             card.classList.toggle("open");
           });
+        }
+        // Fill in photo thumbnails (private bucket -> short-lived signed URLs).
+        if (photos.length) {
+          var box = card.querySelector("[data-scardphotos]");
+          if (box && window.__RT.mgmt && window.__RT.mgmt.signPhotos) {
+            window.__RT.mgmt.signPhotos(photos, 300).then(function (urls) {
+              (urls || []).forEach(function (u) {
+                if (!u) return;
+                var th = el('<div class="sd-thumb"></div>');
+                th.style.backgroundImage = "url('" + u + "')";
+                box.appendChild(th);
+              });
+            });
+          }
         }
         listWrap.appendChild(card);
       });
