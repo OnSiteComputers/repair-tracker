@@ -188,8 +188,8 @@ td.cdate.age-green, td.cdate.age-yellow, td.cdate.age-red{font-weight:600}
 .shdr .whoami{background:rgba(255,255,255,.18); color:#fff}
 
 /* Signed-in line in the management toolbar */
-.signedin{display:inline-flex; align-items:center; font-size:14px; color:var(--muted); margin-right:14px; white-space:nowrap}
-.signedin strong{color:var(--navy); margin-left:5px; font-weight:700}
+.signedin{display:inline-flex; align-items:center; font-size:14px; color:var(--muted); margin-right:14px; white-space:nowrap; min-width:0}
+.signedin strong{display:inline-block; vertical-align:bottom; color:var(--navy); margin-left:5px; font-weight:700; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .photo-grid{display:flex; flex-wrap:wrap; gap:12px; margin-top:12px}
 .photo-empty{font-size:13px; color:#888; font-style:italic}
 .photo-cell{position:relative; width:128px; height:128px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#FAF8F3}

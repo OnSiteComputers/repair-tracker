@@ -1085,7 +1085,7 @@ window.RT_ageTier = function (iso) {
 
     var tright = el('<div class="tright"></div>');
     if (state.currentUser) {
-      tright.appendChild(el('<div class="signedin">Signed in as <strong>' + esc(R.userDisplayName(state.currentUser)) + "</strong></div>"));
+      tright.appendChild(el('<div class="signedin" title="' + esc(state.currentUser) + '">Signed in as <strong>' + esc(R.userDisplayName(state.currentUser)) + "</strong></div>"));
     }
     if (state.view === "active") {
       var newBtn = el('<button class="btn btn-pri">+ New repair</button>');
