@@ -1259,6 +1259,7 @@ window.RT_ageTier = function (iso) {
               ev.stopPropagation();
               var txt = (box.value || "").trim();
               if (!txt) return;
+              var M = window.__RT.mgmt;
               var stamp = fmtDate(new Date().toISOString());
               var who = (M.currentUser && M.currentUser()) ? M.currentUser().split("@")[0] : "front desk";
               var entry = "[" + stamp + " · " + who + "] " + txt;
