@@ -1008,6 +1008,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
+      // one-click Quote button (repair-type jobs only; remote/on-site don't quote)
+      if (r.jobType !== "Remote Support" && r.jobType !== "On-Site Service") {
+        var qbtn = el('<button class="ibtn" title="Print Quote">📝</button>');
+        qbtn.addEventListener("click", function () { openDoc(r, "Quote"); });
+        acts.appendChild(qbtn);
+      }
       // one-click receipt button
       if (r.jobType === "Remote Support") {
         // remote jobs are paid up front — receipt always available
@@ -2113,7 +2119,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       middle = sech("OUR DIAGNOSIS") +
         '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
     } else if (type === "Quote") {
-      middle = sech("SCOPE OF WORK") +
+      middle =
+        (r.diagnosticFindings ?
+          sech("OUR DIAGNOSIS") + '<div class="dbx">' + esc(r.diagnosticFindings) + "</div>" : "") +
+        sech("SCOPE OF WORK") +
         '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
     }
 
