@@ -1282,10 +1282,14 @@ window.RT_ageTier = function (iso) {
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
-      // change-history button
+      // change-history button — fully self-contained so it can't depend on
+      // cross-IIFE wiring. Queries Supabase directly and shows any error inline.
       if (r.id) {
         var hbtn = el('<button class="ibtn" title="View change history">🕘</button>');
-        hbtn.addEventListener("click", function () { openHistory(r); });
+        hbtn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          openHistory(r);
+        });
         acts.appendChild(hbtn);
       }
       // one-click Quote button (repair-type jobs only; remote/on-site don't quote)
