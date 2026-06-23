@@ -2,6 +2,26 @@ window.__RT_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAcwAAAHYCAYAAA
 
 window.__RT_REVIEW_QR = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAIAAAD2HxkiAAAFKElEQVR42u3dsW7bQBBFUSlg6fz/h8Y90wYuCGU8fJ7VntNHphhdLIHhks/zPB/Az/nlFIAIQYSACEGEgAhBhIAIQYSACEGEgAhBhIAIQYSACEGEwL2O2j/7+Pi99Nf+/PwT+1sX5+riMO44w+3funaQ4W89/3dlJQSXoyBCQIQgQkCEIEJAhLCfo/0Tk3Pwa8nJb/tEvnwaLz6z/c8lx+5v/LuyEoLLURAhIEIQISBCECEgQtjPkfxjS+wWn38Y5dPYPlu/+MAlTsiQ/1ArIbgcBRECIgQRAiIEEQIihP0cTsHrVn9Ie/vO+vYRv5UQECGIEBAhiBAQIYgQECGIEAhwx8x/aH+rRO29EXeoHX/yXRRWQkCEIEJAhCBCQIQgQkCE8Eaiw/olnmuQfGRD+/Q/fPztz8t449+VlRBECIgQRAiIEEQIiBBECPyjf1j/xluqkzvry5vW23e7J7/anr8rKyGIEEQIiBBECIgQRAiIEPZTHNavvpc5+dXC28/vuAFg3ZNvJQRECCIERAgiBEQIIgRECCM9z/Ms/LPwvun2KfP8Dywbsv2//ccz5JH7VkJwOQqIEEQIiBBECIgQRAh0WH5n/ZB58eran5Dffhjhm0CSB2klBJejIEJAhCBCQIQgQkCEsJ/izvqa8pQzOSXf80nsyd3uq98p0f4LsRKCy1EQISBCECEgQhAhIELYT3RYf6E8ir1jw3XMEk99bz9Xc751+ysPrITgchQQIYgQECGIEBAhiBB4TfSd9UuMYi8kbwwo7zGf/x755Ii8fK6SB2klBJejIEJAhCBCQIQgQkCEsJ8pw/pr7aP88AC91xIP6h+yad1KCIgQRAiIEEQIiBBECIgQRpryzvqy5Obo5JMB5tzYMOf/ej4768HlKCBCECEgQhAhIEIQISBCWMKxxFHOeb9F72Es8XKO2pEkbyG6470dyf8aKyG4HAURAiIEEQIiBBECIoT99A/r75gI1z6z/UhqU9r2gy+fq/ZHgQy5U6L8u7ISAiIEEQIiBBGCCAERggiBH9I/rL9jot2+A7r9TQntY+uLDyyfq/avNuQD7/hdJTfdWwnB5SiIEBAhiBAQIYgQECHspzisD4/Il3jI/PzTeGHIaZzzgck7CqyE4HIURAiIEEQIiBBECIgQ9vM8z3PCccwZQCc/MPy3hhx/8scTHtbbWQ8uRwERgggBEYIIARGCCIHXFIf1S2x1H7JvPbyLPzllbj+Mdtffa8izF6yE4HIURAiIEEQIiBBECIgQ9lN8DH5tlBkeWyf/XPIWhSFz8Mdb3xhgZz24HAVECCIERAgiBEQIIgTu1P/O+iVcDFWTm+5rc/w5TyFY/TCGPAXCSgguR0GEgAhBhIAIQYSACGE/R/snhrfPX6jN1tuntOGN5O0HmXybwJxN98k5vpUQXI6CCAERgggBEYIIARHCfo7kH7tjP377eDc5Lw5P/4ds5E8+luGOc2UlBJejgAhBhIAIQYSACEGEwLcdTsEXQ7aE33H8Q8buQ140UOYx+OByFBAhiBAQIYgQECGIEBAhrM4dM1/V7ucY8t6LxwpPo0i+3CL8M/AuCnA5CogQRAiIEEQIiBBECLwmOqyf8wyIpb/aEmPrIYcRfm+HlRBcjgIiBBECIgQRAiIEEQKv6R/Wh0fJSx9/bSK8+j0Pc95FMeRMWglBhCBCQIQgQkCEIEJAhLCf53mezgJYCUGEgAhBhIAIQYSACEGEgAhBhIAIQYSACEGEgAhBhIAI4X39BfM2SnaGSkelAAAAAElFTkSuQmCC";
 window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
+
+/* Age helpers as TRUE GLOBALS so every part of the app can reach them,
+   regardless of which IIFE the call happens in. */
+window.RT_daysSince = function (iso) {
+  if (!iso) return 0;
+  var p = String(iso).slice(0, 10).split("-");
+  if (p.length !== 3) return 0;
+  var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  if (isNaN(d.getTime())) return 0;
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var diff = Math.floor((today - d) / 86400000);
+  return diff < 0 ? 0 : diff + 1;
+};
+window.RT_ageTier = function (iso) {
+  var n = window.RT_daysSince(iso);
+  if (n <= 5) return "green";
+  if (n <= 10) return "yellow";
+  return "red";
+};
 /* =====================================================================
    On-Site Computer Service — Repair Tracker
    Plain JS (no build step). Talks to Supabase. Two views:
@@ -807,7 +827,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       rows.forEach(function (r) {
         var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
         var photos = Array.isArray(r.photoUrls) ? r.photoUrls : [];
-        var tier = R.ageTier ? R.ageTier(r.dateCheckedIn) : "";
+        var tier = window.RT_ageTier(r.dateCheckedIn);
         var tierCls = tier ? (" age-" + tier) : "";
         var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
                         (r.estimatedCost && String(r.estimatedCost).trim()) ||
@@ -1188,7 +1208,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
                       (r.estCompletion && String(r.estCompletion).trim()) ||
                       (r.lastEditedBy && r.lastEditedBy.trim());
       // Age color only for jobs still in the shop (not picked up / completed)
-      var tier = (r.completed || r.status === "Picked Up") ? "" : ageTier(r.dateCheckedIn);
+      var tier = (r.completed || r.status === "Picked Up") ? "" : window.RT_ageTier(r.dateCheckedIn);
       var tierCls = tier ? (" age-" + tier) : "";
       var tr = el(
         "<tr" + (hasDetail ? ' class="rowexp"' : "") + ">" +
