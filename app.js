@@ -525,7 +525,7 @@ window.RT_ageTier = function (iso) {
     return sb.from("audit_log").select("*").eq("repair_id", String(repairId))
       .order("changed_at", { ascending: false }).limit(200)
       .then(function (res) {
-        if (res.error) { console.error(res.error); return []; }
+        if (res.error) { console.error("audit_log read:", res.error); throw res.error; }
         return res.data || [];
       });
   }
@@ -767,9 +767,7 @@ window.RT_ageTier = function (iso) {
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
       var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       statsHost.innerHTML =
-        '<div class="stats">' +
-          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
-          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+        '<div class="stats">' +          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
           statCard(cInRepair, "In repair", "#5E9A4B", "In Repair") +
@@ -1029,9 +1027,7 @@ window.RT_ageTier = function (iso) {
       // "Active" = work-in-progress only; Ready for Pickup is done, counted separately
       var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
       var statsEl = el(
-        '<div class="stats">' +
-          statCard(cActive, "Active repairs", "#3B5BA5", "Active") +
-          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+        '<div class="stats">' +          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
           statCard(cInRepair, "In repair", "#5E9A4B", "In Repair") +
@@ -1206,7 +1202,8 @@ window.RT_ageTier = function (iso) {
                       (r.trackerNotes && r.trackerNotes.trim()) ||
                       (r.callNotes && r.callNotes.trim()) ||
                       (r.estCompletion && String(r.estCompletion).trim()) ||
-                      (r.lastEditedBy && r.lastEditedBy.trim());
+                      (r.lastEditedBy && r.lastEditedBy.trim()) ||
+                      true; // call-log box is always available, so every row expands
       // Age color only for jobs still in the shop (not picked up / completed)
       var tier = (r.completed || r.status === "Picked Up") ? "" : window.RT_ageTier(r.dateCheckedIn);
       var tierCls = tier ? (" age-" + tier) : "";
@@ -1247,9 +1244,39 @@ window.RT_ageTier = function (iso) {
               ? '<div class="rd-row"><span class="rd-l">Call notes</span><div class="rd-v">' + esc(r.callNotes) + "</div></div>" : "") +
             (r.lastEditedBy && r.lastEditedBy.trim()
               ? '<div class="rd-row"><span class="rd-l">Last edited by</span><div class="rd-v">' + esc(r.lastEditedBy) +
-                (r.lastEditedAt ? " · " + esc(fmtDate(r.lastEditedAt)) : "") + "</div></div>" : "");
+                (r.lastEditedAt ? " · " + esc(fmtDate(r.lastEditedAt)) : "") + "</div></div>" : "") +
+            '<div class="rd-row"><span class="rd-l">Log a call / add a note</span>' +
+              '<div class="rd-v"><textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
+              '<button type="button" class="sd-callsave" data-callsave>Save note</button></div></div>';
           detailRow = el('<tr class="detailrow"><td colspan="7"><div class="rd-wrap">' + cells + "</div></td></tr>");
           tr.parentNode.insertBefore(detailRow, tr.nextSibling);
+          // wire the call-note save box (same behavior as Linda's board)
+          (function () {
+            var box = detailRow.querySelector("[data-callbox]");
+            var saveBtn = detailRow.querySelector("[data-callsave]");
+            if (!box || !saveBtn) return;
+            saveBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              var txt = (box.value || "").trim();
+              if (!txt) return;
+              var stamp = fmtDate(new Date().toISOString());
+              var who = (M.currentUser && M.currentUser()) ? M.currentUser().split("@")[0] : "front desk";
+              var entry = "[" + stamp + " · " + who + "] " + txt;
+              var combined = (r.callNotes && r.callNotes.trim())
+                ? (r.callNotes.trim() + "\n" + entry) : entry;
+              saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+              M.saveRepair({ id: r.id, callNotes: combined }).then(function () {
+                r.callNotes = combined;
+                box.value = "";
+                saveBtn.disabled = false; saveBtn.textContent = "Saved ✓";
+                setTimeout(function () { if (saveBtn) saveBtn.textContent = "Save note"; }, 1500);
+                loadAndRender();
+              }).catch(function (e2) {
+                saveBtn.disabled = false; saveBtn.textContent = "Save note";
+                console.error("call note save:", e2);
+              });
+            });
+          })();
         });
       }
 
@@ -1629,7 +1656,8 @@ window.RT_ageTier = function (iso) {
       if (lastStamp !== "") html += "</div>";
       list.innerHTML = html;
     }).catch(function (err) {
-      list.innerHTML = '<div class="hist-empty">Couldn\'t load history.</div>';
+      var msg = (err && err.message) ? err.message : "Unknown error";
+      list.innerHTML = '<div class="hist-empty">Couldn\'t load history.<br><span style="font-size:12px;color:#999">' + esc(msg) + "</span></div>";
       console.error(err);
     });
   }
