@@ -154,6 +154,34 @@ tr.detailrow td{padding:0 16px 14px}
 .photo-actions{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
 .photo-hint{font-size:12.5px; color:var(--navy2)}
 .onsite-note{font-size:12.5px; color:#666; font-style:italic; margin:8px 0 4px}
+
+/* Age color-coding by days checked in */
+.age-green{background:#E6F4EA !important}
+.age-yellow{background:#FEF7E0 !important}
+.age-red{background:#FCE8E6 !important}
+td.cdate.age-green, td.cdate.age-yellow, td.cdate.age-red{font-weight:600}
+.scard.age-green{background:#E6F4EA}
+.scard.age-yellow{background:#FEF7E0}
+.scard.age-red{background:#FCE8E6}
+.who.age-green, .who.age-yellow, .who.age-red{padding:2px 8px; border-radius:6px; display:inline-block}
+.who.age-red{color:#B00020}
+
+/* Linda's call-note box */
+.sd-callbox{width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:8px; padding:8px; font-size:13px; font-family:inherit; resize:vertical; margin-bottom:6px}
+.sd-callsave{background:var(--navy); color:#fff; border:none; border-radius:7px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer}
+.sd-callsave:hover{background:#16264d}
+.sd-callsave:disabled{opacity:.6; cursor:default}
+
+/* Change history modal */
+.modal-hist{max-width:640px}
+.hist-loading, .hist-empty{padding:24px; text-align:center; color:var(--muted); font-size:14px}
+.hist-event{border-left:3px solid var(--gold); padding:8px 0 8px 14px; margin-bottom:14px}
+.hist-when{font-size:12px; font-weight:700; color:var(--navy2); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px}
+.hist-line{font-size:13.5px; line-height:1.55; color:var(--ink); padding:2px 0}
+.hist-field{font-weight:600}
+.hist-old{color:#B00020; text-decoration:line-through}
+.hist-new{color:#1A7D3C; font-weight:600}
+.hist-arrow{color:var(--muted)}
 .photo-grid{display:flex; flex-wrap:wrap; gap:12px; margin-top:12px}
 .photo-empty{font-size:13px; color:#888; font-style:italic}
 .photo-cell{position:relative; width:128px; height:128px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#FAF8F3}

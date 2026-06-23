@@ -124,6 +124,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     readyForPickup: "ready_for_pickup",
     estimatedCost: "estimated_cost",
     estCompletion: "est_completion",
+    trackerNotes: "tracker_notes",
+    callNotes: "call_notes",
+    lastEditedBy: "last_edited_by",
+    lastEditedAt: "last_edited_at",
     diagnosticFindings: "diagnostic_findings",
     workPerformed: "work_performed",
     diagnosticFeePaid: "diagnostic_fee_paid",
@@ -182,6 +186,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", estCompletion: "", diagnosticFindings: "", diagnosticFeePaid: "No",
+      trackerNotes: "", callNotes: "", lastEditedBy: "", lastEditedAt: "",
       partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
       onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "",
@@ -198,6 +203,25 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     var p = String(iso).slice(0, 10).split("-");
     if (p.length !== 3) return iso;
     return p[1] + "/" + p[2] + "/" + p[0];
+  }
+  // Days since check-in, and the color tier:
+  // green = 1–5 days, yellow = 6–10, red = over 10.
+  function daysSince(iso) {
+    if (!iso) return 0;
+    var p = String(iso).slice(0, 10).split("-");
+    if (p.length !== 3) return 0;
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    if (isNaN(d.getTime())) return 0;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var diff = Math.floor((today - d) / 86400000);
+    return diff < 0 ? 0 : diff + 1; // day of check-in counts as day 1
+  }
+  function ageTier(iso) {
+    var n = daysSince(iso);
+    if (n <= 5) return "green";
+    if (n <= 10) return "yellow";
+    return "red";
   }
   function computeTotals(r) {
     var parts = num(r.partsAmount), labor = num(r.laborAmount);
@@ -341,6 +365,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
+    daysSince: daysSince, ageTier: ageTier,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
   };
@@ -368,7 +393,19 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     dateSortDir: "desc",  // desc = newest first, asc = oldest first
     sortKey: "date",      // "date" (checked-in) or "name" (customer)
     authed: false,
+    currentUser: "",      // logged-in user's email (for audit + roles)
+    isAdmin: false,       // greg = admin (can move job status); casey cannot
   };
+
+  // The admin can move jobs through statuses; other staff logins cannot.
+  var ADMIN_EMAILS = ["greg@onsitecomputerservice.net"];
+  function setCurrentUser(session) {
+    try {
+      var u = session && session.user ? session.user : null;
+      state.currentUser = u && u.email ? u.email.toLowerCase() : "";
+      state.isAdmin = ADMIN_EMAILS.indexOf(state.currentUser) !== -1;
+    } catch (e) { state.currentUser = ""; state.isAdmin = false; }
+  }
 
   function toast(msg) {
     var t = el('<div class="toast">' + esc(msg) + "</div>");
@@ -385,6 +422,52 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         return state.repairs;
       });
   }
+  // Human-readable labels for audited fields (skip internal/noisy ones)
+  var AUDIT_LABELS = {
+    customerName: "Customer name", phone: "Phone", cellPhone: "Cell phone",
+    email: "Email", address: "Address", cityStateZip: "City/State/Zip",
+    preferredContact: "Preferred contact", device: "Device", brandModel: "Brand/Model",
+    serialNumber: "Serial number", passwordPin: "Password/PIN", accessories: "Accessories",
+    backupStatus: "Backup status", problem: "Problem", status: "Status",
+    estimatedCost: "Estimated cost", estCompletion: "Est. completion date",
+    diagnosticFindings: "Our Diagnosis", diagnosticFeePaid: "Diagnostic fee paid",
+    partsAmount: "Parts cost", partsMarkup: "Parts markup %", laborAmount: "Labor",
+    workPerformed: "Work performed", paymentMethod: "Payment method", jobType: "Job type",
+    intakeType: "Intake type", dateCheckedIn: "Date checked in", dateCompleted: "Date completed",
+    remoteHours: "Remote hours", remoteRateType: "Remote rate", remoteWork: "Remote work",
+    remotePayMethod: "Remote paid by", onsiteTripCharge: "On-site trip charge",
+    onsiteHours: "On-site hours", onsiteWork: "On-site work",
+    trackerNotes: "Notes", callNotes: "Call notes",
+  };
+
+  function writeAudit(rec, before) {
+    if (!sb) return Promise.resolve();
+    var who = state.currentUser || "unknown";
+    var rows = [];
+    if (!before) {
+      // brand new record
+      rows.push({
+        repair_id: String(rec.id || ""), customer_name: rec.customerName || "",
+        changed_by: who, field: "(new ticket)", old_value: "", new_value: "Ticket created",
+      });
+    } else {
+      Object.keys(AUDIT_LABELS).forEach(function (k) {
+        if (rec[k] === undefined) return;            // field not part of this save
+        var ov = before[k] == null ? "" : String(before[k]);
+        var nv = rec[k] == null ? "" : String(rec[k]);
+        if (ov === nv) return;                        // unchanged
+        rows.push({
+          repair_id: String(rec.id || ""), customer_name: rec.customerName || before.customerName || "",
+          changed_by: who, field: AUDIT_LABELS[k], old_value: ov, new_value: nv,
+        });
+      });
+    }
+    if (!rows.length) return Promise.resolve();
+    return sb.from("audit_log").insert(rows).then(function (res) {
+      if (res.error) console.error("audit:", res.error);
+    });
+  }
+
   function saveRepair(rec) {
     // Status is the source of truth for the Completed bucket:
     // "Picked Up" => completed; any other status => active. This keeps a record
@@ -392,11 +475,39 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     if (rec.status !== undefined) {
       rec.completed = (rec.status === "Picked Up");
     }
+    // stamp who/when
+    rec.lastEditedBy = state.currentUser || "";
+    rec.lastEditedAt = new Date().toISOString();
+    // capture the "before" state for the audit diff (existing record only)
+    var before = rec.id ? findRepair(rec.id) : null;
     var row = toRow(rec);
     var q = rec.id
       ? sb.from("repairs").update(row).eq("id", rec.id).select()
       : sb.from("repairs").insert(row).select();
-    return q.then(function (res) { if (res.error) throw res.error; return res.data[0]; });
+    return q.then(function (res) {
+      if (res.error) throw res.error;
+      var saved = res.data[0];
+      // write the audit trail (don't block the save on it)
+      writeAudit(rec.id ? rec : fromRow(saved), before);
+      return saved;
+    });
+  }
+  function findRepair(id) {
+    for (var i = 0; i < state.repairs.length; i++) {
+      if (state.repairs[i].id === id) return state.repairs[i];
+    }
+    return null;
+  }
+
+  // Fetch the change history for one ticket (newest first).
+  function loadAuditLog(repairId) {
+    if (!sb) return Promise.resolve([]);
+    return sb.from("audit_log").select("*").eq("repair_id", String(repairId))
+      .order("changed_at", { ascending: false }).limit(200)
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return []; }
+        return res.data || [];
+      });
   }
   function deleteRepair(id) {
     return sb.from("repairs").delete().eq("id", id).then(function (res) {
@@ -696,15 +807,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       rows.forEach(function (r) {
         var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
         var photos = Array.isArray(r.photoUrls) ? r.photoUrls : [];
+        var tier = R.ageTier ? R.ageTier(r.dateCheckedIn) : "";
+        var tierCls = tier ? (" age-" + tier) : "";
         var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
                         (r.estimatedCost && String(r.estimatedCost).trim()) ||
                         (r.estCompletion && String(r.estCompletion).trim()) ||
-                        photos.length > 0;
+                        photos.length > 0 ||
+                        true; // call-note box is always available, so every card expands
         var card = el(
-          '<div class="scard' + (hasDetail ? " has-detail" : "") + '" style="border-left-color:' + st.dot + '">' +
+          '<div class="scard' + (hasDetail ? " has-detail" : "") + tierCls + '" style="border-left-color:' + st.dot + '">' +
             '<div class="scard-main">' +
               "<div>" +
-                '<div class="who">' + esc(r.customerName || "—") +
+                '<div class="who' + tierCls + '">' + esc(r.customerName || "—") +
                   (hasDetail ? ' <span class="caret">▾</span>' : "") + "</div>" +
                 '<div class="dev">' + esc([r.device, r.brandModel].filter(Boolean).join(" · ") || "—") + "</div>" +
                 '<div class="meta">Checked in ' + esc(fmtDate(r.dateCheckedIn)) +
@@ -728,6 +842,13 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
                 (photos.length ?
                   '<div class="sd-row"><span class="sd-l">Photos</span>' +
                   '<div class="sd-photos" data-scardphotos></div></div>' : "") +
+                (r.callNotes && r.callNotes.trim() ?
+                  '<div class="sd-row"><span class="sd-l">Call notes so far</span>' +
+                  '<div class="sd-v">' + esc(r.callNotes) + "</div></div>" : "") +
+                '<div class="sd-row"><span class="sd-l">Log a call / add a note</span>' +
+                  '<textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
+                  '<button type="button" class="sd-callsave" data-callsave>Save note</button>' +
+                "</div>" +
               "</div>" : "") +
           "</div>"
         );
@@ -744,6 +865,39 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
             }
           });
         }
+        // Call-note box: Linda can log a call; it appends (with timestamp) and
+        // saves to the record so it shows on the main tracker sheet.
+        (function () {
+          var box = card.querySelector("[data-callbox]");
+          var saveBtn = card.querySelector("[data-callsave]");
+          if (!box || !saveBtn) return;
+          // keep clicks inside the box from collapsing the card
+          box.addEventListener("click", function (e) { e.stopPropagation(); });
+          saveBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var txt = (box.value || "").trim();
+            if (!txt) return;
+            var M = window.__RT.mgmt;
+            if (!M || !M.saveRepair) return;
+            var stamp = fmtDate(new Date().toISOString());
+            var who = (M.currentUser && M.currentUser()) ? M.currentUser().split("@")[0] : "front desk";
+            var entry = "[" + stamp + " · " + who + "] " + txt;
+            var combined = (r.callNotes && r.callNotes.trim())
+              ? (r.callNotes.trim() + "\n" + entry) : entry;
+            saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+            M.saveRepair({ id: r.id, callNotes: combined }).then(function () {
+              r.callNotes = combined;
+              box.value = "";
+              saveBtn.disabled = false; saveBtn.textContent = "Saved ✓";
+              setTimeout(function () { if (saveBtn) saveBtn.textContent = "Save note"; }, 1500);
+              if (openCards[r.id]) openCards[r.id] = true; // stay open
+              refresh();
+            }).catch(function (err) {
+              saveBtn.disabled = false; saveBtn.textContent = "Save note";
+              console.error("call note save:", err);
+            });
+          });
+        })();
         // Fill in photo thumbnails (private bucket -> short-lived signed URLs).
         if (photos.length) {
           var box = card.querySelector("[data-scardphotos]");
@@ -1028,11 +1182,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     rows.forEach(function (r) {
       var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
       var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
-                      (r.estimatedCost && String(r.estimatedCost).trim());
+                      (r.estimatedCost && String(r.estimatedCost).trim()) ||
+                      (r.trackerNotes && r.trackerNotes.trim()) ||
+                      (r.callNotes && r.callNotes.trim()) ||
+                      (r.estCompletion && String(r.estCompletion).trim()) ||
+                      (r.lastEditedBy && r.lastEditedBy.trim());
+      // Age color only for jobs still in the shop (not picked up / completed)
+      var tier = (r.completed || r.status === "Picked Up") ? "" : ageTier(r.dateCheckedIn);
+      var tierCls = tier ? (" age-" + tier) : "";
       var tr = el(
         "<tr" + (hasDetail ? ' class="rowexp"' : "") + ">" +
-          '<td class="cdate">' + esc(fmtDate(r.dateCheckedIn)) + "</td>" +
-          "<td><div class=\"cust\">" + esc(r.customerName || "—") +
+          '<td class="cdate' + tierCls + '">' + esc(fmtDate(r.dateCheckedIn)) + "</td>" +
+          "<td class=\"ccust" + tierCls + "\"><div class=\"cust\">" + esc(r.customerName || "—") +
             (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
           "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.jobType === "On-Site Service" ? "On-Site Service" : (r.device || "—"))) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : (r.jobType === "On-Site Service" ? "On-site visit" : r.brandModel)) + "</div></td>" +
@@ -1057,7 +1218,16 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
               ? '<div class="rd-row"><span class="rd-l">Our Diagnosis</span><div class="rd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
             (r.estimatedCost && String(r.estimatedCost).trim()
               ? '<div class="rd-row"><span class="rd-l">Estimated cost</span><div class="rd-v">' +
-                esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "");
+                esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "") +
+            (r.estCompletion && String(r.estCompletion).trim()
+              ? '<div class="rd-row"><span class="rd-l">Est. completion</span><div class="rd-v">' + esc(fmtDate(r.estCompletion)) + "</div></div>" : "") +
+            (r.trackerNotes && r.trackerNotes.trim()
+              ? '<div class="rd-row"><span class="rd-l">Notes</span><div class="rd-v">' + esc(r.trackerNotes) + "</div></div>" : "") +
+            (r.callNotes && r.callNotes.trim()
+              ? '<div class="rd-row"><span class="rd-l">Call notes</span><div class="rd-v">' + esc(r.callNotes) + "</div></div>" : "") +
+            (r.lastEditedBy && r.lastEditedBy.trim()
+              ? '<div class="rd-row"><span class="rd-l">Last edited by</span><div class="rd-v">' + esc(r.lastEditedBy) +
+                (r.lastEditedAt ? " · " + esc(fmtDate(r.lastEditedAt)) : "") + "</div></div>" : "");
           detailRow = el('<tr class="detailrow"><td colspan="7"><div class="rd-wrap">' + cells + "</div></td></tr>");
           tr.parentNode.insertBefore(detailRow, tr.nextSibling);
         });
@@ -1065,6 +1235,12 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
       // doc menu
       acts.appendChild(buildDocMenu(r));
+      // change-history button
+      if (r.id) {
+        var hbtn = el('<button class="ibtn" title="View change history">🕘</button>');
+        hbtn.addEventListener("click", function () { openHistory(r); });
+        acts.appendChild(hbtn);
+      }
       // one-click Quote button (repair-type jobs only; remote/on-site don't quote)
       if (r.jobType !== "Remote Support" && r.jobType !== "On-Site Service") {
         var qbtn = el('<button class="ibtn" title="Print Quote">📝</button>');
@@ -1162,6 +1338,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     state: state, toast: toast, loadRepairs: loadRepairs, saveRepair: saveRepair,
     deleteRepair: deleteRepair, renderApp: renderApp, clearSearchAndFilter: clearSearchAndFilter,
     loadListOptions: loadListOptions, rememberFromRecord: rememberFromRecord, forgetOption: forgetOption,
+    isAdmin: function () { return state.isAdmin; },
+    currentUser: function () { return state.currentUser; },
+    loadAuditLog: loadAuditLog,
     uploadPhoto: uploadPhoto, signPhoto: signPhoto, signPhotos: signPhotos, deletePhoto: deletePhoto, fetchPhotoUrls: fetchPhotoUrls,
   };
 
@@ -1293,6 +1472,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }
     state.authed = true;
     state.readonly = isReadOnlyUser(session);
+    setCurrentUser(session);
     if (state.readonly) {
       renderStatusPage();
     } else {
@@ -1373,6 +1553,67 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   }
 
   // ---------------- Form ----------------
+  function openHistory(rec) {
+    var overlay = el('<div class="overlay"></div>');
+    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); });
+    function close() { overlay.remove(); document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onKey);
+
+    var modal = el(
+      '<div class="modal modal-hist">' +
+        '<div class="mhead"><div class="mtitle">Change History</div>' +
+        '<div class="msub">' + esc(rec.customerName || "") +
+          (rec.device ? " · " + esc(rec.device) : "") + "</div>" +
+        '<button class="mx" title="Close">✕</button></div>' +
+        '<div class="mbody"><div class="hist-list" data-histlist>' +
+          '<div class="hist-loading">Loading history…</div>' +
+        "</div></div>" +
+      "</div>"
+    );
+    modal.querySelector(".mx").addEventListener("click", close);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    var list = modal.querySelector("[data-histlist]");
+    M.loadAuditLog(rec.id).then(function (entries) {
+      if (!entries || !entries.length) {
+        list.innerHTML = '<div class="hist-empty">No changes recorded yet for this ticket.</div>';
+        return;
+      }
+      // group by changed_at + changed_by so a multi-field save reads as one event
+      var html = "";
+      var lastStamp = "";
+      entries.forEach(function (e) {
+        var when = e.changed_at ? new Date(e.changed_at) : null;
+        var whenStr = when && !isNaN(when.getTime())
+          ? when.toLocaleString() : (e.changed_at || "");
+        var who = e.changed_by || "unknown";
+        var head = whenStr + " · " + who;
+        if (head !== lastStamp) {
+          if (lastStamp !== "") html += "</div>";
+          html += '<div class="hist-event"><div class="hist-when">' + esc(head) + "</div>";
+          lastStamp = head;
+        }
+        if (e.field === "(new ticket)") {
+          html += '<div class="hist-line"><span class="hist-field">Ticket created</span></div>';
+        } else {
+          html += '<div class="hist-line">' +
+            '<span class="hist-field">' + esc(e.field || "") + ":</span> " +
+            '<span class="hist-old">' + esc(e.old_value || "(blank)") + "</span>" +
+            ' <span class="hist-arrow">→</span> ' +
+            '<span class="hist-new">' + esc(e.new_value || "(blank)") + "</span>" +
+          "</div>";
+        }
+      });
+      if (lastStamp !== "") html += "</div>";
+      list.innerHTML = html;
+    }).catch(function (err) {
+      list.innerHTML = '<div class="hist-empty">Couldn\'t load history.</div>';
+      console.error(err);
+    });
+  }
+
   function openForm(rec) {
     var r = JSON.parse(JSON.stringify(rec));
     var isNew = !r.id;
@@ -1433,7 +1674,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
         frow(
           fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
-          fld("Current status", sel("status", STATUSES, r.status))
+          (M.isAdmin()
+            ? fld("Current status", sel("status", STATUSES, r.status))
+            : fld("Current status (only the admin can change this)", '<select data-k="status" disabled>' + STATUSES.map(function (o) {
+                return '<option' + (o === r.status ? " selected" : "") + ">" + esc(o) + "</option>";
+              }).join("") + "</select>"))
         ) +
         frow(
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts)) +
@@ -1444,6 +1689,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost)) +
           fld("Est. completion date" + (r.estCompletion && String(r.estCompletion).trim() ? " — already given: " + esc(fmtDate(r.estCompletion)) : " (none given yet)") + " (shown on status board)", dateInp("estCompletion", r.estCompletion))
         ) +
+        frow(fld("Notes (shown on tracker sheet only — not printed)", ta("trackerNotes", r.trackerNotes, 3), "full")) +
+        frow(fld("Call notes (from phone calls — shown on tracker sheet)", ta("callNotes", r.callNotes, 3), "full")) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
       section("Photos (print on Diagnostic & Final receipts)",
