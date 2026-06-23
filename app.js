@@ -1013,6 +1013,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         var qbtn = el('<button class="ibtn" title="Print Quote">📝</button>');
         qbtn.addEventListener("click", function () { openDoc(r, "Quote"); });
         acts.appendChild(qbtn);
+        var dbtn = el('<button class="ibtn" title="Print Diagnostic Receipt">🩺</button>');
+        dbtn.addEventListener("click", function () { openDoc(r, "Diagnostic Receipt"); });
+        acts.appendChild(dbtn);
       }
       // one-click receipt button
       if (r.jobType === "Remote Support") {
