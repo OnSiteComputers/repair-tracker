@@ -2200,8 +2200,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         "</tbody></table>" +
         '<div class="dstrip">ESTIMATED TOTAL: ' + money(estTotal) + "</div>" +
         '<div class="dnote">This quote is valid for 30 days. The $' + SHOP.diagFee +
-          ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>" +
-        sign;
+          ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>";
     }
 
     // Footer — review QR now lives in the header; footers just thank
