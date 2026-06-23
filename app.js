@@ -422,17 +422,48 @@ window.RT_ageTier = function (iso) {
     sortKey: "date",      // "date" (checked-in) or "name" (customer)
     authed: false,
     currentUser: "",      // logged-in user's email (for audit + roles)
-    isAdmin: false,       // greg = admin (can move job status); casey cannot
+    isAdmin: false,       // admin: can move job status + manage users
+    role: "full",         // resolved role from user_roles table: admin | full | read-only
   };
 
-  // The admin can move jobs through statuses; other staff logins cannot.
-  var ADMIN_EMAILS = ["greg@onsitecomputerservice.net"];
+  // The admin can move jobs through statuses AND manage users.
+  // Hardcoded lists are now only a FALLBACK if the user_roles table can't be read,
+  // so nobody ever gets locked out. The table is the source of truth.
+  var ADMIN_EMAILS = ["greg@onsitecomputerservice.net", "admin@onsitecomputerservice.net"];
+  var READONLY_EMAILS = ["status@onsite.local", "viewer@onsitecomputerservice.net"];
+
   function setCurrentUser(session) {
     try {
       var u = session && session.user ? session.user : null;
       state.currentUser = u && u.email ? u.email.toLowerCase() : "";
-      state.isAdmin = ADMIN_EMAILS.indexOf(state.currentUser) !== -1;
-    } catch (e) { state.currentUser = ""; state.isAdmin = false; }
+    } catch (e) { state.currentUser = ""; }
+  }
+
+  // Resolve the logged-in user's role from the user_roles table.
+  // Falls back to the hardcoded lists if the table is unreachable.
+  function applyRole(role) {
+    state.role = role;
+    state.isAdmin = (role === "admin");
+    state.readonly = (role === "read-only");
+  }
+  function fallbackRole(email) {
+    if (ADMIN_EMAILS.indexOf(email) !== -1) return "admin";
+    if (READONLY_EMAILS.indexOf(email) !== -1) return "read-only";
+    return "full";
+  }
+  function loadRole(session) {
+    setCurrentUser(session);
+    var email = state.currentUser;
+    if (!sb || !email) { applyRole(fallbackRole(email)); return Promise.resolve(); }
+    return sb.from("user_roles").select("role").eq("email", email).maybeSingle()
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.role) {
+          applyRole(fallbackRole(email));   // table miss or no row -> safe fallback
+        } else {
+          applyRole(String(res.data.role).toLowerCase());
+        }
+      })
+      .catch(function () { applyRole(fallbackRole(email)); });
   }
 
   function toast(msg) {
@@ -536,6 +567,28 @@ window.RT_ageTier = function (iso) {
         if (res.error) { console.error("audit_log read:", res.error); throw res.error; }
         return res.data || [];
       });
+  }
+
+  // ---- user_roles (admin user-management screen) ----
+  function listUserRoles() {
+    if (!sb) return Promise.resolve([]);
+    return sb.from("user_roles").select("*").order("role").order("email")
+      .then(function (res) {
+        if (res.error) { console.error("user_roles read:", res.error); throw res.error; }
+        return res.data || [];
+      });
+  }
+  function setUserRole(email, role, displayName) {
+    if (!sb) return Promise.reject(new Error("no db"));
+    var row = { email: String(email).toLowerCase(), role: role, updated_at: new Date().toISOString() };
+    if (displayName !== undefined) row.display_name = displayName;
+    return sb.from("user_roles").upsert(row, { onConflict: "email" }).select()
+      .then(function (res) { if (res.error) throw res.error; return res.data[0]; });
+  }
+  function removeUserRole(email) {
+    if (!sb) return Promise.reject(new Error("no db"));
+    return sb.from("user_roles").delete().eq("email", String(email).toLowerCase())
+      .then(function (res) { if (res.error) throw res.error; return true; });
   }
   function deleteRepair(id) {
     return sb.from("repairs").delete().eq("id", id).then(function (res) {
@@ -1012,6 +1065,7 @@ window.RT_ageTier = function (iso) {
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
+          (state.isAdmin ? '<button class="tab tab-admin" data-admin="1" title="Manage users">Manage users</button>' : "") +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -1020,6 +1074,11 @@ window.RT_ageTier = function (iso) {
       if (b.getAttribute("data-v") === state.view) b.classList.add("on");
       if (b.getAttribute("data-signout")) {
         b.addEventListener("click", function () { window.__RT.mgmt.signOut(); });
+      } else if (b.getAttribute("data-admin")) {
+        b.addEventListener("click", function () {
+          window.history.replaceState({}, "", window.location.pathname + "?view=admin");
+          renderAdminPage();
+        });
       } else {
         b.addEventListener("click", function () { state.view = b.getAttribute("data-v"); renderApp(); });
       }
@@ -1407,8 +1466,142 @@ window.RT_ageTier = function (iso) {
     isAdmin: function () { return state.isAdmin; },
     currentUser: function () { return state.currentUser; },
     loadAuditLog: loadAuditLog,
+    role: function () { return state.role; },
+    listUserRoles: listUserRoles,
+    setUserRole: setUserRole,
+    removeUserRole: removeUserRole,
+    renderAdminPage: function () { renderAdminPage(); },
     uploadPhoto: uploadPhoto, signPhoto: signPhoto, signPhotos: signPhotos, deletePhoto: deletePhoto, fetchPhotoUrls: fetchPhotoUrls,
   };
+
+  // ---------- Admin: user management screen (admin@ only) ----------
+  var ROLE_OPTIONS = [
+    { v: "admin", label: "Admin" },
+    { v: "full", label: "Full access" },
+    { v: "read-only", label: "Read-only" }
+  ];
+  function roleLabel(v) {
+    for (var i = 0; i < ROLE_OPTIONS.length; i++) if (ROLE_OPTIONS[i].v === v) return ROLE_OPTIONS[i].label;
+    return v;
+  }
+  function renderAdminPage() {
+    app.innerHTML = "";
+    var root = el('<div class="root"></div>');
+
+    // header
+    var hdr = el(
+      '<header class="hdr">' +
+        '<div class="brand"><div class="mark">' + doctorMarkSVG() + "</div>" +
+          '<div><div class="nm">' + esc(SHOP.name) + '</div><div class="sub">User Management</div></div></div>' +
+        '<nav class="nav">' +
+          '<button class="tab" data-back="1">← Back to tracker</button>' +
+          '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
+        "</nav>" +
+      "</header>"
+    );
+    hdr.querySelector("[data-back]").addEventListener("click", function () {
+      // drop the ?view=admin param and go to the normal app
+      window.history.replaceState({}, "", window.location.pathname);
+      loadAndRender();
+    });
+    hdr.querySelector("[data-signout]").addEventListener("click", function () { signOut(); });
+    root.appendChild(hdr);
+
+    var wrap = el('<div class="wrap"></div>');
+    wrap.appendChild(el('<div class="admin-note">Only you (Admin) can see this page. Changes save immediately.</div>'));
+
+    var host = el('<div class="admin-host"><div class="admin-loading">Loading users…</div></div>');
+    wrap.appendChild(host);
+    root.appendChild(wrap);
+    app.appendChild(root);
+
+    paintAdminUsers(host);
+  }
+
+  function paintAdminUsers(host) {
+    listUserRoles().then(function (users) {
+      host.innerHTML = "";
+
+      // Count admins so we can prevent removing/demoting the last one
+      var adminCount = users.filter(function (u) { return u.role === "admin"; }).length;
+
+      var table = el(
+        '<table class="admin-tbl"><thead><tr>' +
+          "<th>Name</th><th>Email</th><th>Role</th><th></th>" +
+        "</tr></thead><tbody></tbody></table>"
+      );
+      var tb = table.querySelector("tbody");
+
+      users.forEach(function (u) {
+        var isSelf = (u.email === state.currentUser);
+        var isLastAdmin = (u.role === "admin" && adminCount <= 1);
+
+        var tr = el("<tr></tr>");
+        tr.appendChild(el("<td>" + esc(u.display_name || "—") + "</td>"));
+        tr.appendChild(el('<td class="admin-email">' + esc(u.email) + "</td>"));
+
+        // role dropdown
+        var roleTd = el("<td></td>");
+        var sel = el('<select class="admin-role"></select>');
+        ROLE_OPTIONS.forEach(function (o) {
+          sel.appendChild(el('<option value="' + o.v + '"' + (o.v === u.role ? " selected" : "") + ">" + esc(o.label) + "</option>"));
+        });
+        // Don't let the last admin demote themselves into a lockout
+        if (isLastAdmin) { sel.disabled = true; sel.title = "Can't change the only admin's role"; }
+        sel.addEventListener("change", function () {
+          var newRole = sel.value;
+          sel.disabled = true;
+          setUserRole(u.email, newRole, u.display_name).then(function () {
+            toast(esc(u.display_name || u.email) + " is now " + roleLabel(newRole));
+            paintAdminUsers(host); // refresh (admin counts may change)
+          }).catch(function (e) {
+            sel.disabled = false; sel.value = u.role;
+            toast("Couldn't update role");
+            console.error(e);
+          });
+        });
+        roleTd.appendChild(sel);
+        tr.appendChild(roleTd);
+
+        // remove button
+        var actTd = el("<td></td>");
+        if (isLastAdmin) {
+          actTd.appendChild(el('<span class="admin-locked">last admin</span>'));
+        } else {
+          var rm = el('<button class="admin-rm" type="button">Remove</button>');
+          rm.addEventListener("click", function () {
+            var who = u.display_name || u.email;
+            if (!window.confirm("Remove " + who + "? They will lose access. (This removes their role; you also delete their login in your provider if needed.)")) return;
+            rm.disabled = true; rm.textContent = "Removing…";
+            removeUserRole(u.email).then(function () {
+              toast(who + " removed");
+              paintAdminUsers(host);
+            }).catch(function (e) {
+              rm.disabled = false; rm.textContent = "Remove";
+              toast("Couldn't remove");
+              console.error(e);
+            });
+          });
+          actTd.appendChild(rm);
+        }
+        tr.appendChild(actTd);
+        tb.appendChild(tr);
+      });
+
+      host.appendChild(table);
+
+      // Add User — visible but not yet wired to create a login (next build step)
+      var addRow = el('<div class="admin-add"></div>');
+      var addBtn = el('<button class="btn btn-pri" type="button" disabled>+ Add User</button>');
+      addBtn.title = "Coming next: create a brand-new login from here";
+      addRow.appendChild(addBtn);
+      addRow.appendChild(el('<div class="admin-add-note">Adding a brand-new login is the next piece we\'re building. For now, roles for existing users are fully managed here.</div>'));
+      host.appendChild(addRow);
+    }).catch(function (e) {
+      host.innerHTML = '<div class="admin-loading">Couldn\'t load users.<br><span style="font-size:12px;color:#999">' + esc((e && e.message) || "error") + "</span></div>";
+      console.error(e);
+    });
+  }
 
   // ---------- login (real Supabase Auth: email + password) ----------
   function renderLogin() {
@@ -1537,13 +1730,20 @@ window.RT_ageTier = function (iso) {
       return;
     }
     state.authed = true;
-    state.readonly = isReadOnlyUser(session);
-    setCurrentUser(session);
-    if (state.readonly) {
-      renderStatusPage();
-    } else {
-      loadAndRender();
-    }
+    // Resolve role from the user_roles table (with safe fallback), then route.
+    loadRole(session).then(function () {
+      // Admin requesting the user-management screen
+      var params = new URLSearchParams(window.location.search);
+      if (state.isAdmin && params.get("view") === "admin") {
+        renderAdminPage();
+        return;
+      }
+      if (state.readonly) {
+        renderStatusPage();
+      } else {
+        loadAndRender();
+      }
+    });
   }
 
   function boot() {
