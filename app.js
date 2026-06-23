@@ -960,13 +960,13 @@ window.RT_ageTier = function (iso) {
     }
     refresh();
     if (window.__RT.mgmt && window.__RT.mgmt.loadListOptions) window.__RT.mgmt.loadListOptions();
-    // live updates via Supabase realtime, plus a 15s safety poll
+    // live updates via Supabase realtime, plus a 60s safety poll
     try {
       sb.channel("repairs-status")
         .on("postgres_changes", { event: "*", schema: "public", table: "repairs" }, refresh)
         .subscribe();
     } catch (e) { /* realtime optional */ }
-    setInterval(refresh, 15000);
+    setInterval(refresh, 60000);
   }
 
   // =====================================================================
@@ -1485,7 +1485,7 @@ window.RT_ageTier = function (iso) {
         loadRepairs().then(function () {
           if (!document.querySelector(".overlay")) renderApp();
         }).catch(function () {});
-      }, 15000);
+      }, 60000);
     }).catch(function (e) {
       app.innerHTML = "";
       app.appendChild(el('<div class="banner err">Couldn’t load repairs from the database. ' +
