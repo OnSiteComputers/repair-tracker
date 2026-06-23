@@ -25,6 +25,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     partsMarkup: 35,   // default % markup on parts cost; editable per ticket
     remoteRegular: 186.91,   // pre-tax; +7% = $199.99 all-in
     remoteEmergency: 280.36, // pre-tax; +7% = $299.99 all-in
+    onsiteTrip: 120,         // default on-site trip charge (editable per ticket)
+    onsiteHourly: 195,       // on-site labor rate per hour
   };
 
   var STATUSES = [
@@ -43,11 +45,11 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var BACKUP_STATUS = ["Confirms backed up", "Requests backup service", "Declines backup"];
   var YESNO = ["Yes", "No"];
   var INTAKE_TYPES = ["Appointment", "Walk-in"];
-  var JOB_TYPES = ["Repair", "Remote Support"];
+  var JOB_TYPES = ["Repair", "Remote Support", "On-Site Service"];
   var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
   var REMOTE_RATE_TYPES = ["Regular ($199.99 total)", "Emergency ($299.99 total)"];
   var REMOTE_PAY = ["Debit", "Credit"];
-  var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "Label"];
+  var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "On-Site Service Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
   // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
   var WORKING_STATES = ["Checked In", "Diagnosed", "Waiting on Parts", "In Repair"];
@@ -103,6 +105,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     dateCheckedIn: "date_checked_in",
     customerName: "customer_name",
     phone: "phone",
+    cellPhone: "cell_phone",
     email: "email",
     address: "address",
     cityStateZip: "city_state_zip",
@@ -127,6 +130,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     remoteRateType: "remote_rate_type",
     remoteWork: "remote_work",
     remotePayMethod: "remote_pay_method",
+    onsiteTripCharge: "onsite_trip_charge",
+    onsiteHours: "onsite_hours",
+    onsiteWork: "onsite_work",
     partsAmount: "parts_amount",
     partsMarkup: "parts_markup",
     laborAmount: "labor_amount",
@@ -170,13 +176,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     return {
       dateCheckedIn: new Date().toISOString().slice(0, 10),
       jobType: "Repair",
-      customerName: "", phone: "", email: "", address: "", cityStateZip: "",
+      customerName: "", phone: "", cellPhone: "", email: "", address: "", cityStateZip: "",
       preferredContact: "Call", device: "", brandModel: "", serialNumber: "",
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
       partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
+      onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "",
       photoUrls: [],
       completed: false,
     };
@@ -251,6 +258,30 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       subtotal: subtotal, tax: tax, total: total,
     };
   }
+  function computeOnsite(r) {
+    var rnd = function (n) { return Math.round(n * 100) / 100; };
+    var rate = SHOP.taxRate;
+    // Trip charge (defaults to SHOP.onsiteTrip, editable per ticket)
+    var trip = (r.onsiteTripCharge === "" || r.onsiteTripCharge == null)
+      ? SHOP.onsiteTrip : num(r.onsiteTripCharge);
+    // Labor: hours * $195
+    var hrs = num(r.onsiteHours);
+    var hourly = SHOP.onsiteHourly;
+    var labor = rnd(hrs * hourly);
+    // Parts: optional, marked up like the Final Receipt
+    var parts = num(r.partsAmount);
+    var markupPct = (r.partsMarkup === "" || r.partsMarkup == null) ? SHOP.partsMarkup : num(r.partsMarkup);
+    var markedParts = rnd(parts * (1 + markupPct / 100));
+    // Totals — everything taxed (NC taxes the trip charge as part of the service)
+    var subtotal = rnd(trip + labor + markedParts);
+    var tax = rnd(subtotal * rate);
+    var total = rnd(subtotal + tax);
+    return {
+      trip: trip, hours: hrs, hourly: hourly, labor: labor,
+      parts: parts, markupPct: markupPct, markedParts: markedParts,
+      subtotal: subtotal, tax: tax, total: total,
+    };
+  }
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -308,7 +339,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     LIST_FOR_KEY: LIST_FOR_KEY, REMEMBERED: REMEMBERED, mergeOption: mergeOption,
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
-    num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote,
+    num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
   };
@@ -584,7 +615,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     sInput.addEventListener("input", function () { q = sInput.value.toLowerCase(); paint(); });
 
     function paint() {
-      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up" && r.jobType !== "Remote Support"; });
+      var active = state.repairs.filter(function (r) { return !r.completed && r.status !== "Picked Up" && r.jobType !== "Remote Support" && r.jobType !== "On-Site Service"; });
       paintStats(active);
       var rows = active.filter(function (r) {
         if (statusFilter === "Active") { if (R.WORKING_STATES.indexOf(r.status) === -1) return false; }
@@ -722,12 +753,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
 
     // header
     // Completed view = Picked Up (or legacy archived). Active = everything else.
-    // Remote Support jobs are kept out of both and shown in their own view.
+    // Remote Support and On-Site Service jobs are kept out of both and shown in their own views.
     function isDone(r) { return r.completed || r.status === "Picked Up"; }
     function isRemote(r) { return r.jobType === "Remote Support"; }
+    function isOnsite(r) { return r.jobType === "On-Site Service"; }
     var remote = state.repairs.filter(isRemote);
-    var active = state.repairs.filter(function (r) { return !isDone(r) && !isRemote(r); });
-    var completed = state.repairs.filter(function (r) { return isDone(r) && !isRemote(r); });
+    var onsite = state.repairs.filter(isOnsite);
+    var active = state.repairs.filter(function (r) { return !isDone(r) && !isRemote(r) && !isOnsite(r); });
+    var completed = state.repairs.filter(function (r) { return isDone(r) && !isRemote(r) && !isOnsite(r); });
     // header "Active" count = working states only (Ready for Pickup excluded)
     var activeCount = active.filter(function (r) { return WORKING_STATES.indexOf(r.status) !== -1; }).length;
     var hdr = el(
@@ -738,6 +771,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           '<button class="tab" data-v="active">Active <span class="ct">' + activeCount + "</span></button>" +
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
+          '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -839,16 +873,19 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     if (!host) return;
     var isActive = state.view === "active";
     var isRemoteView = state.view === "remote";
+    var isOnsiteView = state.view === "onsite";
     var isDone = function (r) { return r.completed || r.status === "Picked Up"; };
     var isRemote = function (r) { return r.jobType === "Remote Support"; };
+    var isOnsite = function (r) { return r.jobType === "On-Site Service"; };
     var list = state.repairs.filter(function (r) {
       if (isRemoteView) return isRemote(r);
-      if (isRemote(r)) return false;               // remote jobs never show in active/completed
+      if (isOnsiteView) return isOnsite(r);
+      if (isRemote(r) || isOnsite(r)) return false;  // remote & on-site never show in active/completed
       return isActive ? !isDone(r) : isDone(r);
     });
     var q = state.search.toLowerCase();
     var rows = list.filter(function (r) {
-      var ms = !q || [r.customerName, r.phone, r.device, r.brandModel, r.problem, r.remoteWork]
+      var ms = !q || [r.customerName, r.phone, r.cellPhone, r.device, r.brandModel, r.problem, r.remoteWork, r.onsiteWork]
         .join(" ").toLowerCase().indexOf(q) !== -1;
       var mf;
       if (!isActive || state.statusFilter === "All") mf = true;
@@ -875,13 +912,23 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     host.innerHTML = "";
     if (rows.length === 0) {
       var hasAny = list.length > 0;
+      var emptyTitle, emptySub;
+      if (isRemoteView) {
+        emptyTitle = hasAny ? "No remote jobs match your search" : "No remote support jobs yet";
+        emptySub = hasAny ? "Try a different search term." : "Set a ticket's Job Type to Remote Support to see it here.";
+      } else if (isOnsiteView) {
+        emptyTitle = hasAny ? "No on-site jobs match your search" : "No on-site service jobs yet";
+        emptySub = hasAny ? "Try a different search term." : "Set a ticket's Job Type to On-Site Service to see it here.";
+      } else if (!isActive) {
+        emptyTitle = "No completed jobs yet";
+        emptySub = "Repairs marked Picked Up show up here. Open one and change its status to send it back to Active.";
+      } else {
+        emptyTitle = hasAny ? "No repairs match your search" : "No repairs yet";
+        emptySub = hasAny ? "Try a different search term or status filter." : "Add your first repair to get started.";
+      }
       host.appendChild(el(
-        '<div class="empty"><div class="t">' +
-          (!isActive ? "No completed jobs yet" : hasAny ? "No repairs match your search" : "No repairs yet") +
-        '</div><div class="s">' +
-          (!isActive ? "Repairs marked Picked Up show up here. Open one and change its status to send it back to Active."
-            : hasAny ? "Try a different search term or status filter." : "Add your first repair to get started.") +
-        "</div></div>"
+        '<div class="empty"><div class="t">' + emptyTitle + "</div>" +
+        '<div class="s">' + emptySub + "</div></div>"
       ));
       if (isActive && !hasAny) {
         var b = el('<button class="btn btn-pri">+ New repair</button>');
@@ -931,8 +978,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           "<td><div class=\"cust\">" + esc(r.customerName || "—") +
             (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
-          "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.device || "—")) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : r.brandModel) + "</div></td>" +
-          '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.problem || "—")) + "</td>" +
+          "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.jobType === "On-Site Service" ? "On-Site Service" : (r.device || "—"))) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : (r.jobType === "On-Site Service" ? "On-site visit" : r.brandModel)) + "</div></td>" +
+          '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.jobType === "On-Site Service" ? (r.onsiteWork || "—") : (r.problem || "—"))) + "</td>" +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
             '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span></td>" +
           '<td class="num">' + (r.estimatedCost ? money(num(r.estimatedCost)) : "—") + "</td>" +
@@ -967,14 +1014,19 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         var rrcpt = el('<button class="ibtn" title="Print Remote Support Receipt">🧾</button>');
         rrcpt.addEventListener("click", function () { openDoc(r, "Remote Support Receipt"); });
         acts.appendChild(rrcpt);
+      } else if (r.jobType === "On-Site Service") {
+        // on-site jobs — receipt always available
+        var orcpt = el('<button class="ibtn" title="Print On-Site Service Receipt">🧾</button>');
+        orcpt.addEventListener("click", function () { openDoc(r, "On-Site Service Receipt"); });
+        acts.appendChild(orcpt);
       } else if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
         // one-click Final Receipt — only once the job is ready, so no $0 misfires
         var rcpt = el('<button class="ibtn" title="Print Sales Receipt">🧾</button>');
         rcpt.addEventListener("click", function () { openDoc(r, "Final Receipt"); });
         acts.appendChild(rcpt);
       }
-      // restore to active (for accidental Picked Up, or archived jobs) — not for remote
-      if (!isActive && !isRemoteView) {
+      // restore to active (for accidental Picked Up, or archived jobs) — not for remote/on-site
+      if (!isActive && !isRemoteView && !isOnsiteView) {
         var rb = el('<button class="ibtn" title="Send back to active">↩</button>');
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
@@ -1209,7 +1261,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var JOB_TYPES = R.JOB_TYPES;
   var REMOTE_RATE_TYPES = R.REMOTE_RATE_TYPES, REMOTE_PAY = R.REMOTE_PAY;
   var DEVICES = R.DEVICES, BRANDS = R.BRANDS, CITY_ZIPS = R.CITY_ZIPS, ACCESSORY_OPTS = R.ACCESSORY_OPTS;
-  var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals, computeRemote = R.computeRemote;
+  var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals, computeRemote = R.computeRemote, computeOnsite = R.computeOnsite;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, logoImg = R.logoImg;
   var M = R.mgmt;
 
@@ -1284,10 +1336,13 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         ) +
         frow(
           fld("Phone", inp("phone", r.phone)) +
-          fld("Email", inp("email", r.email), "wide")
+          fld("Cell phone", inp("cellPhone", r.cellPhone))
         ) +
         frow(
-          fld("Preferred contact", sel("preferredContact", CONTACT_PREF, r.preferredContact)) +
+          fld("Email", inp("email", r.email), "wide") +
+          fld("Preferred contact", sel("preferredContact", CONTACT_PREF, r.preferredContact))
+        ) +
+        frow(
           fld("Address", inp("address", r.address), "wide")
         ) +
         frow(
@@ -1352,6 +1407,15 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         ) +
         frow(fld("Remote work performed (prints on Remote Support Receipt)", ta("remoteWork", r.remoteWork, 4), "full")) +
         '<div class="totals" id="remoteTotalsBox"></div>'
+      ) +
+      section("On-Site Service (separate receipt)",
+        frow(
+          fld("Trip charge", inp("onsiteTripCharge", r.onsiteTripCharge)) +
+          fld("On-site hours (× $" + SHOP.onsiteHourly + "/hr)", inp("onsiteHours", r.onsiteHours))
+        ) +
+        frow(fld("On-site work performed (prints on On-Site Service Receipt)", ta("onsiteWork", r.onsiteWork, 4), "full")) +
+        '<div class="onsite-note">Parts are optional — enter Parts cost &amp; markup % in the Charges section above and they\'ll be added to this receipt.</div>' +
+        '<div class="totals" id="onsiteTotalsBox"></div>'
       );
     modal.appendChild(body);
 
@@ -1359,15 +1423,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     body.querySelectorAll("[data-k]").forEach(function (node) {
       node.addEventListener("input", function () {
         r[node.getAttribute("data-k")] = node.value;
-        if (["partsAmount", "partsMarkup", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(node.getAttribute("data-k")) !== -1)
+        var k = node.getAttribute("data-k");
+        if (["partsAmount", "partsMarkup", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(k) !== -1)
           paintTotals();
-        if (["remoteHours", "remoteRateType"].indexOf(node.getAttribute("data-k")) !== -1)
+        if (["remoteHours", "remoteRateType"].indexOf(k) !== -1)
           paintRemote();
+        // parts also feed the on-site receipt, so repaint on-site on parts changes too
+        if (["onsiteTripCharge", "onsiteHours", "partsAmount", "partsMarkup"].indexOf(k) !== -1)
+          paintOnsite();
       });
       node.addEventListener("change", function () {
         r[node.getAttribute("data-k")] = node.value;
         paintTotals();
         paintRemote();
+        paintOnsite();
       });
     });
 
@@ -1509,6 +1578,22 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         trow("Sales tax (7%)", money(rm.tax)) +
         trow("Remote total", money(rm.total), true);
     }
+    function paintOnsite() {
+      var box = document.getElementById("onsiteTotalsBox");
+      if (!box) return;
+      var os = computeOnsite(r);
+      var rows =
+        trow("Trip charge", money(os.trip)) +
+        trow("Labor (" + os.hours + " hr × " + money(os.hourly) + ")", money(os.labor));
+      if (os.parts > 0) {
+        rows += trow("Parts billed (+" + os.markupPct + "%)", money(os.markedParts));
+      }
+      rows +=
+        trow("Subtotal", money(os.subtotal)) +
+        trow("Sales tax (7%)", money(os.tax)) +
+        trow("On-site total", money(os.total), true);
+      box.innerHTML = rows;
+    }
 
     // footer
     var foot = el('<div class="mfoot"></div>');
@@ -1562,6 +1647,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     document.body.appendChild(overlay);
     paintTotals();
     paintRemote();
+    paintOnsite();
     var first = body.querySelector("input"); if (first) first.focus();
 
     function onEsc(e) { if (e.key === "Escape") close(); }
@@ -1785,6 +1871,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       "Drop-Off Receipt": "DIAGNOSTIC DROP-OFF RECEIPT", "Final Receipt": "SALES RECEIPT",
       "Diagnostic Receipt": "DIAGNOSTIC RECEIPT",
       "Remote Support Receipt": "REMOTE SUPPORT RECEIPT",
+      "On-Site Service Receipt": "ON-SITE SERVICE RECEIPT",
     };
 
     // Compact header (shared) — brand centered, review QR on the right flank
@@ -1857,6 +1944,61 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       return head +
         '<div class="dh-title">REMOTE SUPPORT RECEIPT</div>' +
         rRtop + rItem + rTot + rRev + rThanks;
+    }
+
+    // ===== ON-SITE SERVICE RECEIPT (trip charge + hourly labor + optional parts) =====
+    if (type === "On-Site Service Receipt") {
+      var os = computeOnsite(r);
+      var oSaleNo = (r.id || "------").slice(-6).toUpperCase();
+      var oSoldTo =
+        '<div class="rsold">' +
+          '<div class="rsold-h">Sold To</div>' +
+          '<div class="rsold-b">' + esc(r.customerName || "") +
+            (r.address ? "<br>" + esc(r.address) : "") +
+            (r.cityStateZip ? "<br>" + esc(r.cityStateZip) : "") +
+            (r.phone ? "<br>" + esc(r.phone) : "") + "</div>" +
+        "</div>";
+      var oMetaTbl =
+        '<table class="rmeta"><tbody>' +
+          "<tr><td>Date</td><td>Receipt No.</td></tr>" +
+          '<tr class="v"><td>' + esc(fmtDate(today)) + "</td><td>" + esc(oSaleNo) + "</td></tr>" +
+          '<tr><td colspan="2" class="pm">Payment Method</td></tr>' +
+          '<tr class="v"><td colspan="2">' + esc(r.paymentMethod || "") + "</td></tr>" +
+        "</tbody></table>";
+      var oRtop = '<div class="rtop">' + oSoldTo + oMetaTbl + "</div>";
+
+      // Line items: trip charge, labor, and parts (only if parts entered)
+      var oRows =
+        '<tr><td class="d"><b>On-Site Trip Charge</b></td><td class="a">' + money(os.trip) + "</td></tr>" +
+        '<tr><td class="d"><b>On-Site Labor</b>' +
+          '<div class="rdesc">' + os.hours + " hr &times; " + money(os.hourly) + "/hr" +
+          (r.onsiteWork ? "<br>" + esc(r.onsiteWork) : "") + "</div>" +
+        '</td><td class="a">' + money(os.labor) + "</td></tr>";
+      if (os.parts > 0) {
+        oRows +=
+          '<tr><td class="d"><b>Parts</b>' +
+            '<div class="rdesc">Parts supplied for on-site service</div>' +
+          '</td><td class="a">' + money(os.markedParts) + "</td></tr>";
+      }
+      var oItem =
+        '<table class="ritem"><thead><tr>' +
+          '<th class="d">Description</th><th class="a">Amount</th>' +
+        "</tr></thead><tbody>" + oRows + "</tbody></table>";
+
+      var oTot =
+        '<table class="rtot"><tbody>' +
+          '<tr><td class="l">Subtotal</td><td class="a">' + money(os.subtotal) + "</td></tr>" +
+          '<tr><td class="l">Sales Tax (7%)</td><td class="a">' + money(os.tax) + "</td></tr>" +
+          '<tr class="grand"><td class="l">Total Due</td><td class="a">' + money(os.total) + "</td></tr>" +
+        "</tbody></table>";
+
+      var oThanks =
+        '<div class="dthx">Thank you for your business!</div>' +
+        '<div class="dq">Questions about this receipt? Call ' + esc(SHOP.phone) + ".</div>";
+
+      return head +
+        '<div class="dh-title">ON-SITE SERVICE RECEIPT</div>' +
+        oRtop + oItem + oTot + oThanks;
     }
 
     // ===== RECEIPTS (QuickBooks-style) — shared header pieces =====
@@ -1952,14 +2094,14 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     // Customer block (always)
     var customer =
       frow2(f("Name", r.customerName), f("Date", fmtDate(today))) +
-      frow2(f("Address", r.address), f("", "")) +
-      frow2(f("City/State/Zip", r.cityStateZip), f("Phone", r.phone)) +
+      frow2(f("Address", r.address), f("Phone", r.phone)) +
+      frow2(f("City/State/Zip", r.cityStateZip), f("Cell Phone", r.cellPhone)) +
       frow2(f("Email", r.email), f("Preferred Contact", r.preferredContact));
 
     // Device block (always)
     var device = sech("DEVICE INFORMATION") +
       frow2(f("Device", r.device), f("Brand/Model", r.brandModel)) +
-      frow2(f("Serial Number", r.serialNumber), f("Password/PIN", r.passwordPin)) +
+      frow2(f("Serial Number", r.serialNumber), f("Password/PIN", r.passwordPin ? "••••••" : "")) +
       frow2(f("Accessories", r.accessories), f("Backup Status", r.backupStatus));
 
     // Middle: description box
@@ -2014,17 +2156,18 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         (r.paymentMethod ? '<div class="dpay">Payment method: ' + esc(r.paymentMethod) + "</div>" : "") +
         sign;
     } else {
-      // Quote — itemized Parts + Labor + Diagnostic + Tax
+      // Quote — single bottom-line price from the "Estimated cost" field, plus tax.
+      // (We don't itemize parts/labor to the customer; one number, the way we quote.)
+      var estVal = num(r.estimatedCost);
+      var estTax = Math.round(estVal * SHOP.taxRate * 100) / 100;
+      var estTotal = Math.round((estVal + estTax) * 100) / 100;
       charges =
         sech("ESTIMATE") +
         '<table class="ditem"><tbody>' +
-          '<tr><td>Parts</td><td class="amt">' + money(t.parts) + "</td></tr>" +
-          '<tr><td>Labor</td><td class="amt">' + money(t.labor) + "</td></tr>" +
-          "<tr><td>Diagnostic Fee" + (r.diagnosticFeePaid === "Yes" ? " (already paid)" : "") + '</td><td class="amt">' + money(t.diag) + "</td></tr>" +
-          '<tr><td>Subtotal</td><td class="amt">' + money(t.subtotal) + "</td></tr>" +
-          '<tr><td>Sales Tax (7%)</td><td class="amt">' + money(t.tax) + "</td></tr>" +
+          '<tr><td>Parts &amp; Labor</td><td class="amt">' + money(estVal) + "</td></tr>" +
+          '<tr><td>Sales Tax (7%)</td><td class="amt">' + money(estTax) + "</td></tr>" +
         "</tbody></table>" +
-        '<div class="dstrip">ESTIMATED TOTAL: ' + money(t.total) + "</div>" +
+        '<div class="dstrip">ESTIMATED TOTAL: ' + money(estTotal) + "</div>" +
         '<div class="dnote">This quote is valid for 30 days. The $' + SHOP.diagFee +
           ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>" +
         sign;
