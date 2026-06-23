@@ -1442,7 +1442,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(
           fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost)) +
-          fld("Est. completion date (shown on status board)", dateInp("estCompletion", r.estCompletion))
+          fld("Est. completion date" + (r.estCompletion && String(r.estCompletion).trim() ? " — already given: " + esc(fmtDate(r.estCompletion)) : " (none given yet)") + " (shown on status board)", dateInp("estCompletion", r.estCompletion))
         ) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
