@@ -54,7 +54,7 @@ button,input,select,textarea{font-family:inherit}
 
 .toolbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:15px; flex-wrap:wrap}
 .tleft{display:flex; gap:10px; flex:1; min-width:240px}
-.tright{display:flex; gap:10px; flex-wrap:wrap}
+.tright{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
 .searchbox{position:relative; flex:1; min-width:180px; display:flex}
 .search{flex:1; min-width:180px; padding:10px 34px 10px 13px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff}
 .search-x{position:absolute; right:6px; top:50%; transform:translateY(-50%); background:#EFEDE7; border:0; border-radius:6px; width:22px; height:22px; cursor:pointer; font-size:12px; color:#777; line-height:1; padding:0}
@@ -182,6 +182,14 @@ td.cdate.age-green, td.cdate.age-yellow, td.cdate.age-red{font-weight:600}
 .hist-old{color:#B00020; text-decoration:line-through}
 .hist-new{color:#1A7D3C; font-weight:600}
 .hist-arrow{color:var(--muted)}
+
+/* Signed-in user badge (status board header) */
+.whoami{display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:var(--navy); background:#EEF1F6; padding:6px 12px; border-radius:999px; margin-right:4px; white-space:nowrap}
+.shdr .whoami{background:rgba(255,255,255,.18); color:#fff}
+
+/* Signed-in line in the management toolbar */
+.signedin{display:inline-flex; align-items:center; font-size:14px; color:var(--muted); margin-right:14px; white-space:nowrap}
+.signedin strong{color:var(--navy); margin-left:5px; font-weight:700}
 .photo-grid{display:flex; flex-wrap:wrap; gap:12px; margin-top:12px}
 .photo-empty{font-size:13px; color:#888; font-style:italic}
 .photo-cell{position:relative; width:128px; height:128px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#FAF8F3}

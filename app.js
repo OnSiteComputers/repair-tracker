@@ -1012,7 +1012,6 @@ window.RT_ageTier = function (iso) {
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
-          (state.currentUser ? '<span class="whoami">' + esc(R.userDisplayName(state.currentUser)) + "</span>" : "") +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -1085,6 +1084,9 @@ window.RT_ageTier = function (iso) {
     toolbar.appendChild(tleft);
 
     var tright = el('<div class="tright"></div>');
+    if (state.currentUser) {
+      tright.appendChild(el('<div class="signedin">Signed in as <strong>' + esc(R.userDisplayName(state.currentUser)) + "</strong></div>"));
+    }
     if (state.view === "active") {
       var newBtn = el('<button class="btn btn-pri">+ New repair</button>');
       newBtn.addEventListener("click", function () { openForm(blankRepair()); });
