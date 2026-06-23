@@ -1953,8 +1953,7 @@ window.RT_ageTier = function (iso) {
               }).join("") + "</select>"))
         ) +
         frow(
-          fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts)) +
-          fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
+          fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts))
         ) +
         frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(
