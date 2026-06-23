@@ -1468,6 +1468,7 @@ window.RT_ageTier = function (iso) {
     currentUser: function () { return state.currentUser; },
     loadAuditLog: loadAuditLog,
     role: function () { return state.role; },
+    canChangeStatus: function () { return state.role === "admin" || state.role === "manager"; },
     listUserRoles: listUserRoles,
     setUserRole: setUserRole,
     removeUserRole: removeUserRole,
@@ -1478,9 +1479,11 @@ window.RT_ageTier = function (iso) {
   // ---------- Admin: user management screen (admin@ only) ----------
   var ROLE_OPTIONS = [
     { v: "admin", label: "Admin" },
+    { v: "manager", label: "Manager" },
     { v: "full", label: "Full access" },
     { v: "read-only", label: "Read-only" }
   ];
+  var MAX_ADMINS = 2;
   function roleLabel(v) {
     for (var i = 0; i < ROLE_OPTIONS.length; i++) if (ROLE_OPTIONS[i].v === v) return ROLE_OPTIONS[i].label;
     return v;
@@ -1528,6 +1531,20 @@ window.RT_ageTier = function (iso) {
       // Count admins so we can prevent removing/demoting the last one
       var adminCount = users.filter(function (u) { return u.role === "admin"; }).length;
 
+      // Cap status line
+      var capMsg, capCls;
+      if (adminCount > MAX_ADMINS) {
+        capMsg = adminCount + " admins — over the limit of " + MAX_ADMINS + ". Lower one to a different role.";
+        capCls = "cap-over";
+      } else if (adminCount === MAX_ADMINS) {
+        capMsg = adminCount + " of " + MAX_ADMINS + " admin slots used. Lower an admin first to assign a new one.";
+        capCls = "cap-full";
+      } else {
+        capMsg = adminCount + " of " + MAX_ADMINS + " admin slots used.";
+        capCls = "cap-ok";
+      }
+      host.appendChild(el('<div class="admin-cap ' + capCls + '">' + esc(capMsg) + "</div>"));
+
       var table = el(
         '<table class="admin-tbl"><thead><tr>' +
           "<th>Name</th><th>Email</th><th>Role</th><th></th>" +
@@ -1546,7 +1563,12 @@ window.RT_ageTier = function (iso) {
         // role dropdown
         var roleTd = el("<td></td>");
         var sel = el('<select class="admin-role"></select>');
+        // 2-admin cap: only offer "Admin" if this person is already an admin,
+        // or there's an open admin slot (fewer than MAX_ADMINS). This lets admins
+        // swap among themselves (demote one, then promote another) but never exceed 2.
+        var adminSlotOpen = adminCount < MAX_ADMINS;
         ROLE_OPTIONS.forEach(function (o) {
+          if (o.v === "admin" && u.role !== "admin" && !adminSlotOpen) return; // hide Admin when full
           sel.appendChild(el('<option value="' + o.v + '"' + (o.v === u.role ? " selected" : "") + ">" + esc(o.label) + "</option>"));
         });
         // Don't let the last admin demote themselves into a lockout
@@ -1946,9 +1968,9 @@ window.RT_ageTier = function (iso) {
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
         frow(
           fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
-          (M.isAdmin()
+          (M.canChangeStatus()
             ? fld("Current status", sel("status", STATUSES, r.status))
-            : fld("Current status (only the admin can change this)", '<select data-k="status" disabled>' + STATUSES.map(function (o) {
+            : fld("Current status (managers & admins only)", '<select data-k="status" disabled>' + STATUSES.map(function (o) {
                 return '<option' + (o === r.status ? " selected" : "") + ">" + esc(o) + "</option>";
               }).join("") + "</select>"))
         ) +
