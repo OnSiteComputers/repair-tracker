@@ -243,6 +243,14 @@ window.RT_ageTier = function (iso) {
     if (n <= 10) return "yellow";
     return "red";
   }
+  // Turn an email into a short display name: text before the @, first letter capitalized.
+  // greg@onsitecomputerservice.net -> "Greg"
+  function userDisplayName(email) {
+    if (!email) return "";
+    var local = String(email).split("@")[0] || "";
+    if (!local) return "";
+    return local.charAt(0).toUpperCase() + local.slice(1);
+  }
   function computeTotals(r) {
     var parts = num(r.partsAmount), labor = num(r.laborAmount);
     var rate = SHOP.taxRate;
@@ -385,7 +393,7 @@ window.RT_ageTier = function (iso) {
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
-    daysSince: daysSince, ageTier: ageTier,
+    daysSince: daysSince, ageTier: ageTier, userDisplayName: userDisplayName,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
   };
@@ -712,6 +720,7 @@ window.RT_ageTier = function (iso) {
     page.appendChild(el(
       '<div class="shdr"><div class="nm">' + esc(SHOP.name) + "</div>" +
       '<div class="sub">Repair Status</div>' +
+      (state.currentUser ? '<span class="whoami">' + esc(R.userDisplayName(state.currentUser)) + "</span>" : "") +
       '<button class="sstatus-out" data-signout="1">Sign out</button></div>'
     ));
     var wrap = el('<div class="swrap"></div>');
@@ -830,8 +839,9 @@ window.RT_ageTier = function (iso) {
         var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
                         (r.estimatedCost && String(r.estimatedCost).trim()) ||
                         (r.estCompletion && String(r.estCompletion).trim()) ||
+                        (r.callNotes && r.callNotes.trim()) ||
                         photos.length > 0 ||
-                        true; // call-note box is always available, so every card expands
+                        !state.readonly; // call box (when present) makes every card expandable
         var card = el(
           '<div class="scard' + (hasDetail ? " has-detail" : "") + tierCls + '" style="border-left-color:' + st.dot + '">' +
             '<div class="scard-main">' +
@@ -863,10 +873,11 @@ window.RT_ageTier = function (iso) {
                 (r.callNotes && r.callNotes.trim() ?
                   '<div class="sd-row"><span class="sd-l">Call notes so far</span>' +
                   '<div class="sd-v">' + esc(r.callNotes) + "</div></div>" : "") +
-                '<div class="sd-row"><span class="sd-l">Log a call / add a note</span>' +
+                (state.readonly ? "" :
+                  '<div class="sd-row"><span class="sd-l">Log a call / add a note</span>' +
                   '<textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
                   '<button type="button" class="sd-callsave" data-callsave>Save note</button>' +
-                "</div>" +
+                "</div>") +
               "</div>" : "") +
           "</div>"
         );
@@ -1001,6 +1012,7 @@ window.RT_ageTier = function (iso) {
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
+          (state.currentUser ? '<span class="whoami">' + esc(R.userDisplayName(state.currentUser)) + "</span>" : "") +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -1509,7 +1521,7 @@ window.RT_ageTier = function (iso) {
       if (meta.role === "status" || meta.readonly === true) return true;
       // fallback: match the known status login email(s)
       var email = (u.email || "").toLowerCase();
-      var readonlyEmails = ["status@onsite.local", "linda@onsitecomputerservice.net"];
+      var readonlyEmails = ["status@onsite.local", "viewer@onsitecomputerservice.net"];
       return readonlyEmails.indexOf(email) !== -1;
     } catch (e) { return false; }
   }
