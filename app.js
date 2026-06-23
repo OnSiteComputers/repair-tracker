@@ -1379,7 +1379,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts)) +
           fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
         ) +
-        frow(fld("Our Diagnosis (prints on Diagnostic Receipt)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
+        frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost))) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
@@ -2066,7 +2066,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           '<th class="d">Description</th><th class="a">Amount</th>' +
         "</tr></thead><tbody>" +
           '<tr><td class="d"><b>Parts &amp; Labor</b>' +
-            (r.workPerformed ? '<div class="rdesc">' + esc(r.workPerformed) + "</div>" : "") +
+            (r.problem ? '<div class="rdesc"><b>Problem reported:</b> ' + esc(r.problem) + "</div>" : "") +
+            (r.workPerformed ? '<div class="rdesc"><b>Work performed:</b> ' + esc(r.workPerformed) + "</div>" : "") +
           '</td><td class="a">' + money(t.plSubtotal) + "</td></tr>" +
         "</tbody></table>";
       var fTot =
@@ -2120,10 +2121,8 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
     } else if (type === "Quote") {
       middle =
-        (r.diagnosticFindings ?
-          sech("OUR DIAGNOSIS") + '<div class="dbx">' + esc(r.diagnosticFindings) + "</div>" : "") +
-        sech("SCOPE OF WORK") +
-        '<div class="dbx">' + (r.problem ? esc(r.problem) : "") + "</div>";
+        sech("OUR DIAGNOSIS") +
+        '<div class="dbx">' + (r.diagnosticFindings ? esc(r.diagnosticFindings) : "") + "</div>";
     }
 
     // Money strip + signatures
