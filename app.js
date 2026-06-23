@@ -514,6 +514,20 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       if (res.error) throw res.error; return true;
     });
   }
+
+  // Fetch the freshest photo list for one ticket straight from the DB.
+  // Used at print time so a stale row record can't cause photos to be missed.
+  function fetchPhotoUrls(recId) {
+    if (!sb || !recId) return Promise.resolve([]);
+    return sb.from("repairs").select("photo_urls").eq("id", recId).single()
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return []; }
+        var pv = res.data ? res.data.photo_urls : null;
+        if (pv == null) return [];
+        if (Array.isArray(pv)) return pv;
+        try { return JSON.parse(pv); } catch (e) { return []; }
+      });
+  }
   function clearSearchAndFilter() {
     state.search = "";
     state.statusFilter = "All";
@@ -1105,7 +1119,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     state: state, toast: toast, loadRepairs: loadRepairs, saveRepair: saveRepair,
     deleteRepair: deleteRepair, renderApp: renderApp, clearSearchAndFilter: clearSearchAndFilter,
     loadListOptions: loadListOptions, rememberFromRecord: rememberFromRecord, forgetOption: forgetOption,
-    uploadPhoto: uploadPhoto, signPhoto: signPhoto, signPhotos: signPhotos, deletePhoto: deletePhoto,
+    uploadPhoto: uploadPhoto, signPhoto: signPhoto, signPhotos: signPhotos, deletePhoto: deletePhoto, fetchPhotoUrls: fetchPhotoUrls,
   };
 
   // ---------- login (real Supabase Auth: email + password) ----------
@@ -1741,29 +1755,35 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       page.innerHTML = '<style>' + previewHeaderCSS + "</style>" + docHTML(r, type);
     }
     function doPrint() {
-      // Photos print on the Diagnostic and Final receipts only.
-      var wantsPhotos = (type === "Diagnostic Receipt" || type === "Final Receipt" || type === "Quote") &&
-        Array.isArray(r.photoUrls) && r.photoUrls.length > 0;
+      // Photos print on the Diagnostic Receipt, Final Receipt, and Quote.
+      var docWantsPhotos = (type === "Diagnostic Receipt" || type === "Final Receipt" || type === "Quote");
+      if (!docWantsPhotos) { doPrintWith(""); return; }
 
-      if (!wantsPhotos) { doPrintWith(""); return; }
-
-      // Sign the private photos so they can load into the print view, then build
-      // a photo block. Each photo avoids splitting across pages, so it either
-      // fills the space left at the bottom or flows to the next page.
       var M = window.__RT.mgmt;
-      M.signPhotos(r.photoUrls, 300).then(function (urls) {
-        var valid = (urls || []).filter(Boolean);
-        if (!valid.length) { doPrintWith(""); return; }
-        var imgs = valid.map(function (u) {
-          return '<div class="ph-shot"><img src="' + u + '" alt="Repair photo" /></div>';
-        }).join("");
-        var block =
-          '<div class="ph-wrap">' +
-            '<div class="ph-head">Photos</div>' +
-            imgs +
-          "</div>";
-        doPrintWith(block);
-      }).catch(function (e) { console.error(e); doPrintWith(""); });
+      // Always pull the freshest photo list straight from the database at print
+      // time — this way a stale row record (e.g. printing from the main sheet
+      // before a refresh) can never cause photos to be missed.
+      var photoSource = (M && M.fetchPhotoUrls && r.id)
+        ? M.fetchPhotoUrls(r.id)
+        : Promise.resolve(Array.isArray(r.photoUrls) ? r.photoUrls : []);
+
+      photoSource.then(function (paths) {
+        paths = (paths || []).filter(Boolean);
+        if (!paths.length) { doPrintWith(""); return; }
+        return M.signPhotos(paths, 300).then(function (urls) {
+          var valid = (urls || []).filter(Boolean);
+          if (!valid.length) { doPrintWith(""); return; }
+          var imgs = valid.map(function (u) {
+            return '<div class="ph-shot"><img src="' + u + '" alt="Repair photo" /></div>';
+          }).join("");
+          var block =
+            '<div class="ph-wrap">' +
+              '<div class="ph-head">Photos</div>' +
+              imgs +
+            "</div>";
+          doPrintWith(block);
+        });
+      }).catch(function (e) { console.error("photo print error:", e); doPrintWith(""); });
     }
 
     function doPrintWith(photoBlock) {
