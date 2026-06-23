@@ -1739,7 +1739,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     }
     function doPrint() {
       // Photos print on the Diagnostic and Final receipts only.
-      var wantsPhotos = (type === "Diagnostic Receipt" || type === "Final Receipt") &&
+      var wantsPhotos = (type === "Diagnostic Receipt" || type === "Final Receipt" || type === "Quote") &&
         Array.isArray(r.photoUrls) && r.photoUrls.length > 0;
 
       if (!wantsPhotos) { doPrintWith(""); return; }
