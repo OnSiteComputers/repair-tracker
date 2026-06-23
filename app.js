@@ -424,6 +424,7 @@ window.RT_ageTier = function (iso) {
     currentUser: "",      // logged-in user's email (for audit + roles)
     isAdmin: false,       // admin: can move job status + manage users
     role: "full",         // resolved role from user_roles table: admin | full | read-only
+    onAdminPage: false,   // true while the Manage Users screen is open (suppresses auto-refresh)
   };
 
   // The admin can move jobs through statuses AND manage users.
@@ -1485,6 +1486,7 @@ window.RT_ageTier = function (iso) {
     return v;
   }
   function renderAdminPage() {
+    state.onAdminPage = true;
     app.innerHTML = "";
     var root = el('<div class="root"></div>');
 
@@ -1501,6 +1503,7 @@ window.RT_ageTier = function (iso) {
     );
     hdr.querySelector("[data-back]").addEventListener("click", function () {
       // drop the ?view=admin param and go to the normal app
+      state.onAdminPage = false;
       window.history.replaceState({}, "", window.location.pathname);
       loadAndRender();
     });
@@ -1681,8 +1684,9 @@ window.RT_ageTier = function (iso) {
       try {
         sb.channel("repairs-mgmt")
           .on("postgres_changes", { event: "*", schema: "public", table: "repairs" }, function () {
+            if (state.onAdminPage) return;
             loadRepairs().then(function () {
-              if (!document.querySelector(".overlay")) renderApp();
+              if (!document.querySelector(".overlay") && !state.onAdminPage) renderApp();
             });
           })
           .on("postgres_changes", { event: "*", schema: "public", table: "list_options" }, function () {
@@ -1691,11 +1695,12 @@ window.RT_ageTier = function (iso) {
           .subscribe();
       } catch (e) {}
       // Safety poll: realtime can drop or be disabled; this keeps the sheet fresh.
-      // Skipped while a modal is open so it never yanks the form out from under you.
+      // Skipped while a modal is open OR the admin page is showing, so it never
+      // yanks the form or the Manage Users screen out from under you.
       setInterval(function () {
-        if (document.querySelector(".overlay")) return;
+        if (document.querySelector(".overlay") || state.onAdminPage) return;
         loadRepairs().then(function () {
-          if (!document.querySelector(".overlay")) renderApp();
+          if (!document.querySelector(".overlay") && !state.onAdminPage) renderApp();
         }).catch(function () {});
       }, 60000);
     }).catch(function (e) {
