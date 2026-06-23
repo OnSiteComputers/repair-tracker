@@ -123,6 +123,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
     waitingOnParts: "waiting_on_parts",
     readyForPickup: "ready_for_pickup",
     estimatedCost: "estimated_cost",
+    estCompletion: "est_completion",
     diagnosticFindings: "diagnostic_findings",
     workPerformed: "work_performed",
     diagnosticFeePaid: "diagnostic_fee_paid",
@@ -180,7 +181,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
       preferredContact: "Call", device: "", brandModel: "", serialNumber: "",
       passwordPin: "", accessories: "", backupStatus: "Confirms backed up",
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
-      estimatedCost: "", diagnosticFindings: "", diagnosticFeePaid: "No",
+      estimatedCost: "", estCompletion: "", diagnosticFindings: "", diagnosticFeePaid: "No",
       partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
       onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "",
@@ -476,16 +477,54 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
   var PHOTO_BUCKET = "service-photos";
 
   // Upload a File to the bucket; returns the stored object path.
+  // Shrink a phone photo in the browser before upload: max 1600px on the long
+  // edge, JPEG quality 0.8. A 6MB phone pic becomes a few hundred KB and still
+  // looks sharp on a printed receipt. Falls back to the original on any error.
+  function compressImage(file) {
+    return new Promise(function (resolve) {
+      try {
+        if (!file || !/^image\//.test(file.type) || /gif/i.test(file.type)) { resolve(file); return; }
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var MAX = 1600;
+            var w = img.naturalWidth, h = img.naturalHeight;
+            if (!w || !h) { URL.revokeObjectURL(url); resolve(file); return; }
+            var scale = Math.min(1, MAX / Math.max(w, h));
+            var nw = Math.round(w * scale), nh = Math.round(h * scale);
+            var canvas = document.createElement("canvas");
+            canvas.width = nw; canvas.height = nh;
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, nw, nh);
+            URL.revokeObjectURL(url);
+            canvas.toBlob(function (blob) {
+              if (!blob || blob.size >= file.size) { resolve(file); return; } // no gain → keep original
+              // give it a .jpg name so the stored file is clearly a jpeg
+              var base = (file.name || "photo").replace(/\.[^.]+$/, "");
+              var out = new File([blob], base + ".jpg", { type: "image/jpeg" });
+              resolve(out);
+            }, "image/jpeg", 0.8);
+          } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+      } catch (e) { resolve(file); }
+    });
+  }
+
   function uploadPhoto(recId, file) {
     if (!sb) return Promise.reject(new Error("Not connected"));
     var folder = recId || "unsaved";
-    var safe = (file.name || "photo").replace(/[^A-Za-z0-9._-]/g, "_");
-    var path = folder + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + "_" + safe;
-    return sb.storage.from(PHOTO_BUCKET).upload(path, file, {
-      cacheControl: "3600", upsert: false, contentType: file.type || "image/jpeg",
-    }).then(function (res) {
-      if (res.error) throw res.error;
-      return path;
+    return compressImage(file).then(function (out) {
+      var safe = (out.name || "photo").replace(/[^A-Za-z0-9._-]/g, "_");
+      var path = folder + "/" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + "_" + safe;
+      return sb.storage.from(PHOTO_BUCKET).upload(path, out, {
+        cacheControl: "3600", upsert: false, contentType: out.type || "image/jpeg",
+      }).then(function (res) {
+        if (res.error) throw res.error;
+        return path;
+      });
     });
   }
 
@@ -659,6 +698,7 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
         var photos = Array.isArray(r.photoUrls) ? r.photoUrls : [];
         var hasDetail = (r.diagnosticFindings && r.diagnosticFindings.trim()) ||
                         (r.estimatedCost && String(r.estimatedCost).trim()) ||
+                        (r.estCompletion && String(r.estCompletion).trim()) ||
                         photos.length > 0;
         var card = el(
           '<div class="scard' + (hasDetail ? " has-detail" : "") + '" style="border-left-color:' + st.dot + '">' +
@@ -682,6 +722,9 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
                 (r.estimatedCost && String(r.estimatedCost).trim() ?
                   '<div class="sd-row"><span class="sd-l">Estimated cost</span>' +
                   '<div class="sd-v">' + esc(String(r.estimatedCost).charAt(0) === "$" ? r.estimatedCost : "$" + r.estimatedCost) + "</div></div>" : "") +
+                (r.estCompletion && String(r.estCompletion).trim() ?
+                  '<div class="sd-row"><span class="sd-l">Est. completion</span>' +
+                  '<div class="sd-v">' + esc(fmtDate(r.estCompletion)) + "</div></div>" : "") +
                 (photos.length ?
                   '<div class="sd-row"><span class="sd-l">Photos</span>' +
                   '<div class="sd-photos" data-scardphotos></div></div>' : "") +
@@ -1397,7 +1440,10 @@ window.__RT_REVIEW_URL = "https://g.page/r/CSYE1297nyoJEBM/review";
           fld("Ready for pickup", sel("readyForPickup", YESNO, r.readyForPickup))
         ) +
         frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
-        frow(fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost))) +
+        frow(
+          fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost)) +
+          fld("Est. completion date (shown on status board)", dateInp("estCompletion", r.estCompletion))
+        ) +
         frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
       ) +
       section("Photos (print on Diagnostic & Final receipts)",
