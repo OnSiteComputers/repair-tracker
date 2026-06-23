@@ -1477,7 +1477,7 @@ window.RT_ageTier = function (iso) {
       if (meta.role === "status" || meta.readonly === true) return true;
       // fallback: match the known status login email(s)
       var email = (u.email || "").toLowerCase();
-      var readonlyEmails = ["status@onsite.local"];
+      var readonlyEmails = ["status@onsite.local", "linda@onsitecomputerservice.net"];
       return readonlyEmails.indexOf(email) !== -1;
     } catch (e) { return false; }
   }
