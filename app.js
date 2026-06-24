@@ -407,7 +407,7 @@ window.RT_ageTier = function (iso) {
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
     daysSince: daysSince, ageTier: ageTier, userDisplayName: userDisplayName,
-    esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, logoImg: logoImg,
+    esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, eyeSVG: eyeSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
   };
 })();
@@ -421,7 +421,7 @@ window.RT_ageTier = function (iso) {
   var WORKING_STATES = R.WORKING_STATES;
   var toRow = R.toRow, fromRow = R.fromRow, blankRepair = R.blankRepair;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals;
-  var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG;
+  var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, eyeSVG = R.eyeSVG;
   var sb = R.sb, app = R.app, IS_STATUS = R.IS_STATUS, configOK = R.configOK, CFG = R.CFG;
 
   // ---------- shared state ----------
