@@ -1654,14 +1654,20 @@ window.RT_ageTier = function (iso) {
           var rm = el('<button class="admin-rm" type="button">Remove</button>');
           rm.addEventListener("click", function () {
             var who = u.display_name || u.email;
-            if (!window.confirm("Remove " + who + "? They will lose access. (This removes their role; you also delete their login in your provider if needed.)")) return;
+            var warn =
+              "Permanently delete " + who + "?\n\n" +
+              "This deletes their login completely. They will NOT be able to sign in again, " +
+              "and all access is revoked immediately.\n\n" +
+              "This cannot be undone — to give them access again you'd have to add them as a brand-new user.\n\n" +
+              "Email: " + u.email;
+            if (!window.confirm(warn)) return;
             rm.disabled = true; rm.textContent = "Removing…";
-            removeUserRole(u.email).then(function () {
-              toast(who + " removed");
+            callAdminFn({ action: "delete", email: u.email }).then(function () {
+              toast(who + " permanently removed");
               paintAdminUsers(host);
             }).catch(function (e) {
               rm.disabled = false; rm.textContent = "Remove";
-              toast("Couldn't remove");
+              toast((e && e.message) || "Couldn't remove");
               console.error(e);
             });
           });
