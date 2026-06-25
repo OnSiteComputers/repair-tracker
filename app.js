@@ -49,6 +49,69 @@ window.RT_ageTier = function (iso) {
     onsiteHourly: 195,       // on-site labor rate per hour
   };
 
+  // ---------- Parts Markup Matrix ----------
+  // Tiered pricing on parts COST. "pct" bands add a percentage; "flat" bands add
+  // a fixed dollar amount. The cheaper the part, the higher the % — pricing the
+  // labor of sourcing the part, not the part itself. Every band is matched by
+  // cost >= from && cost < to (top band has no upper bound).
+  // Each customer price is rounded UP to the nearest .99, and can never come out
+  // below cost (loss-proof floor). A blank per-ticket "markup override" uses this
+  // matrix; typing a number overrides it for that one ticket.
+  var PARTS_MATRIX = [
+    { from: 0,    to: 25,       type: "pct",  val: 110 },
+    { from: 25,   to: 75,       type: "pct",  val: 100 },
+    { from: 75,   to: 150,      type: "pct",  val: 90  },
+    { from: 150,  to: 300,      type: "pct",  val: 80  },
+    { from: 300,  to: 500,      type: "pct",  val: 70  },
+    { from: 500,  to: 1000,     type: "flat", val: 175 },
+    { from: 1000, to: 1500,     type: "flat", val: 200 },
+    { from: 1500, to: 1750,     type: "flat", val: 225 },
+    { from: 1750, to: 2000,     type: "flat", val: 250 },
+    { from: 2000, to: Infinity, type: "flat", val: 300 },
+  ];
+
+  // Round a price UP to the nearest .99 (e.g. 405.00 -> 405.99, 405.40 -> 405.99,
+  // 406.00 -> 406.99). Always lands on x.99 and never rounds a price down.
+  function roundUpTo99(n) {
+    if (n <= 0) return 0;
+    var whole = Math.floor(n);
+    var candidate = whole + 0.99;
+    // if n is already above x.99 (e.g. exactly a whole number, or x.99xxx), bump up
+    if (n > candidate + 1e-9) candidate = whole + 1.99;
+    return Math.round(candidate * 100) / 100;
+  }
+
+  // Given a part COST, return the customer-billed price using the matrix.
+  // Loss-proof: never returns less than the cost itself.
+  function matrixPartPrice(cost) {
+    cost = num(cost);
+    if (cost <= 0) return 0;
+    var band = null;
+    for (var i = 0; i < PARTS_MATRIX.length; i++) {
+      var b = PARTS_MATRIX[i];
+      if (cost >= b.from && cost < b.to) { band = b; break; }
+    }
+    if (!band) band = PARTS_MATRIX[PARTS_MATRIX.length - 1]; // safety: top band
+    var raw = (band.type === "pct") ? cost * (1 + band.val / 100) : cost + band.val;
+    var price = roundUpTo99(raw);
+    if (price < cost) price = roundUpTo99(cost); // loss-proof floor
+    return price;
+  }
+
+  // Effective billed parts price for a record: honor a per-ticket override if the
+  // user typed one, otherwise use the matrix. Returns { price, source, overridePct }.
+  function partsBilled(cost, overrideRaw) {
+    cost = num(cost);
+    var hasOverride = !(overrideRaw === "" || overrideRaw == null);
+    if (hasOverride) {
+      var pct = num(overrideRaw);
+      var price = Math.round(cost * (1 + pct / 100) * 100) / 100;
+      if (price < cost && cost > 0) price = cost; // loss-proof even on override
+      return { price: price, source: "override", overridePct: pct };
+    }
+    return { price: matrixPartPrice(cost), source: "matrix", overridePct: null };
+  }
+
   var STATUSES = [
     "Checked In", "Diagnosed", "Waiting on Parts",
     "In Repair", "Ready for Pickup", "Picked Up",
@@ -158,9 +221,12 @@ window.RT_ageTier = function (iso) {
     onsiteTripCharge: "onsite_trip_charge",
     onsiteHours: "onsite_hours",
     onsiteWork: "onsite_work",
+    onsiteParts: "onsite_parts",
+    onsitePayMethod: "onsite_pay_method",
     partsAmount: "parts_amount",
     partsMarkup: "parts_markup",
     laborAmount: "labor_amount",
+    expediteFee: "expedite_fee",
     paymentMethod: "payment_method",
     photoUrls: "photo_urls",
     dateCompleted: "date_completed",
@@ -207,9 +273,9 @@ window.RT_ageTier = function (iso) {
       problem: "", status: "Checked In", waitingOnParts: "No", readyForPickup: "No",
       estimatedCost: "", estCompletion: "", diagnosticFindings: "", diagnosticFeePaid: "No",
       trackerNotes: "", callNotes: "", lastEditedBy: "", lastEditedAt: "",
-      partsAmount: "", partsMarkup: String(SHOP.partsMarkup), laborAmount: "", paymentMethod: "", dateCompleted: "",
+      partsAmount: "", partsMarkup: "", laborAmount: "", expediteFee: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
-      onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "",
+      onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "", onsiteParts: "", onsitePayMethod: "Credit",
       photoUrls: [],
       completed: false,
     };
@@ -256,10 +322,12 @@ window.RT_ageTier = function (iso) {
     var rate = SHOP.taxRate;
     var rnd = function (n) { return Math.round(n * 100) / 100; };
 
-    // ----- Parts markup (default 35%, editable per ticket) -----
+    // ----- Parts markup (tiered matrix; per-ticket % override optional) -----
     // partsAmount holds your COST; markedParts is what the customer is billed.
-    var markupPct = (r.partsMarkup === "" || r.partsMarkup == null) ? SHOP.partsMarkup : num(r.partsMarkup);
-    var markedParts = rnd(parts * (1 + markupPct / 100));
+    var billed = partsBilled(parts, r.partsMarkup);
+    var markedParts = billed.price;
+    // effective % for display (what this cost actually got marked up by)
+    var markupPct = (parts > 0) ? Math.round((markedParts / parts - 1) * 100) : 0;
 
     // ----- Diagnostic fee (taxable) -----
     var diagFee = SHOP.diagFee;                     // 129
@@ -274,17 +342,24 @@ window.RT_ageTier = function (iso) {
     // diagnostic (taxed) minus any appointment fee already prepaid
     var dropDue = rnd(diagTotal - apptFee);         // appt: 113.03 / walk-in: 138.03
 
-    // ----- Final receipt: marked-up parts & labor taxed, minus full diagnostic already paid -----
-    var plSubtotal = rnd(markedParts + labor);
+    // ----- Final receipt: marked-up parts & labor (+ optional expedite) taxed, minus full diagnostic already paid -----
+    var expedite = num(r.expediteFee);              // blank => 0, no row shown
+    var plBase = rnd(markedParts + labor);          // line-item subtotal (parts+labor only)
+    var plSubtotal = rnd(markedParts + labor + expedite); // taxed total incl. expedite
     var plTax = rnd(plSubtotal * rate);
     var plWithTax = rnd(plSubtotal + plTax);
     var diagPaid = (r.diagnosticFeePaid === "Yes");
     var diagCredit = diagPaid ? diagTotal : 0;      // only credit if actually paid
     var finalDue = rnd(plWithTax - diagCredit);
 
+    // ----- Margin figures (admin-only pie) -----
+    var partsMargin = rnd(markedParts - parts);     // what you make on parts
+    var jobMargin = rnd(partsMargin + labor + expedite); // gross margin on this ticket
+
     return {
-      parts: parts, labor: labor,
-      markupPct: markupPct, markedParts: markedParts,
+      parts: parts, labor: labor, expedite: expedite,
+      markupPct: markupPct, markedParts: markedParts, markupSource: billed.source,
+      partsMargin: partsMargin, jobMargin: jobMargin,
       // legacy fields kept for Quote/other docs (now use marked-up parts)
       diag: r.diagnosticFeePaid === "Yes" ? 0 : diagFee,
       subtotal: rnd(markedParts + labor + (r.diagnosticFeePaid === "Yes" ? 0 : diagFee)),
@@ -294,6 +369,7 @@ window.RT_ageTier = function (iso) {
       diagFee: diagFee, diagTax: diagTax, diagTotal: diagTotal,
       isAppt: isAppt, apptFee: apptFee, dropDue: dropDue,
       plSubtotal: plSubtotal, plTax: plTax, plWithTax: plWithTax,
+      plBase: plBase,
       diagCredit: diagCredit, finalDue: finalDue,
     };
   }
@@ -321,17 +397,21 @@ window.RT_ageTier = function (iso) {
     var hrs = num(r.onsiteHours);
     var hourly = SHOP.onsiteHourly;
     var labor = rnd(hrs * hourly);
-    // Parts: optional, marked up like the Final Receipt
-    var parts = num(r.partsAmount);
-    var markupPct = (r.partsMarkup === "" || r.partsMarkup == null) ? SHOP.partsMarkup : num(r.partsMarkup);
-    var markedParts = rnd(parts * (1 + markupPct / 100));
+    // Parts: dedicated on-site parts field, priced via the tiered matrix
+    var parts = num(r.onsiteParts);
+    var billed = partsBilled(parts, r.partsMarkup);
+    var markedParts = billed.price;
+    var markupPct = (parts > 0) ? Math.round((markedParts / parts - 1) * 100) : 0;
     // Totals — everything taxed (NC taxes the trip charge as part of the service)
     var subtotal = rnd(trip + labor + markedParts);
     var tax = rnd(subtotal * rate);
     var total = rnd(subtotal + tax);
+    var partsMargin = rnd(markedParts - parts);
+    var jobMargin = rnd(partsMargin + labor + trip);
     return {
       trip: trip, hours: hrs, hourly: hourly, labor: labor,
-      parts: parts, markupPct: markupPct, markedParts: markedParts,
+      parts: parts, markupPct: markupPct, markedParts: markedParts, markupSource: billed.source,
+      partsMargin: partsMargin, jobMargin: jobMargin,
       subtotal: subtotal, tax: tax, total: total,
     };
   }
@@ -406,6 +486,7 @@ window.RT_ageTier = function (iso) {
     WORKING_STATES: WORKING_STATES,
     toRow: toRow, fromRow: fromRow, blankRepair: blankRepair,
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
+    PARTS_MATRIX: PARTS_MATRIX, matrixPartPrice: matrixPartPrice, partsBilled: partsBilled, roundUpTo99: roundUpTo99,
     daysSince: daysSince, ageTier: ageTier, userDisplayName: userDisplayName,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, eyeSVG: eyeSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
@@ -1942,6 +2023,7 @@ window.RT_ageTier = function (iso) {
   var REMOTE_RATE_TYPES = R.REMOTE_RATE_TYPES, REMOTE_PAY = R.REMOTE_PAY;
   var DEVICES = R.DEVICES, BRANDS = R.BRANDS, CITY_ZIPS = R.CITY_ZIPS, ACCESSORY_OPTS = R.ACCESSORY_OPTS;
   var num = R.num, money = R.money, fmtDate = R.fmtDate, computeTotals = R.computeTotals, computeRemote = R.computeRemote, computeOnsite = R.computeOnsite;
+  var PARTS_MATRIX = R.PARTS_MATRIX, matrixPartPrice = R.matrixPartPrice, partsBilled = R.partsBilled, roundUpTo99 = R.roundUpTo99;
   var esc = R.esc, el = R.el, doctorMarkSVG = R.doctorMarkSVG, logoImg = R.logoImg;
   var M = R.mgmt;
 
@@ -2049,8 +2131,28 @@ window.RT_ageTier = function (iso) {
     });
   }
 
+  // Dropdown fields whose STORED value must match what the <select> shows.
+  // When a record predates a field (value null/"" /not in list), the browser
+  // shows the first option but r[k] stays empty -> receipts print blank.
+  // Seed r[k] to the first list option so what-you-see is what's-saved.
+  var DROPDOWN_DEFAULTS = {
+    remotePayMethod: REMOTE_PAY,
+    onsitePayMethod: REMOTE_PAY,
+    paymentMethod: null, // intentionally blank-allowed (has a "—" option); skip
+  };
+  function seedDropdownDefaults(r) {
+    Object.keys(DROPDOWN_DEFAULTS).forEach(function (k) {
+      var list = DROPDOWN_DEFAULTS[k];
+      if (!list) return; // blank-allowed dropdown, leave it
+      var v = r[k];
+      if (v == null || v === "" || list.indexOf(v) === -1) r[k] = list[0];
+    });
+    return r;
+  }
+
   function openForm(rec) {
     var r = JSON.parse(JSON.stringify(rec));
+    seedDropdownDefaults(r);
     var isNew = !r.id;
     var overlay = el('<div class="overlay"></div>');
     overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); });
@@ -2140,8 +2242,9 @@ window.RT_ageTier = function (iso) {
       section("Charges",
         frow(
           fld("Parts cost", inp("partsAmount", r.partsAmount)) +
-          fld("Parts markup %", inp("partsMarkup", r.partsMarkup)) +
+          fld("Markup override %", inp("partsMarkup", r.partsMarkup, "auto (matrix)")) +
           fld("Labor amount", inp("laborAmount", r.laborAmount)) +
+          fld("Expedite fee", inp("expediteFee", r.expediteFee)) +
           fld("Diagnostic fee paid?", sel("diagnosticFeePaid", YESNO, r.diagnosticFeePaid))
         ) +
         frow(
@@ -2163,8 +2266,12 @@ window.RT_ageTier = function (iso) {
           fld("Trip charge", inp("onsiteTripCharge", r.onsiteTripCharge)) +
           fld("On-site hours (× $" + SHOP.onsiteHourly + "/hr)", inp("onsiteHours", r.onsiteHours))
         ) +
+        frow(
+          fld("On-site parts cost", inp("onsiteParts", r.onsiteParts)) +
+          fld("Paid by", sel("onsitePayMethod", REMOTE_PAY, r.onsitePayMethod))
+        ) +
         frow(fld("On-site work performed (prints on On-Site Service Receipt)", ta("onsiteWork", r.onsiteWork, 4), "full")) +
-        '<div class="onsite-note">Parts are optional — enter Parts cost &amp; markup % in the Charges section above and they\'ll be added to this receipt.</div>' +
+        '<div class="onsite-note">On-site parts use this section\'s own Parts cost (kept separate from the repair Charges above) and are marked up at the same % as the Charges section.</div>' +
         '<div class="totals" id="onsiteTotalsBox"></div>'
       );
     modal.appendChild(body);
@@ -2174,12 +2281,12 @@ window.RT_ageTier = function (iso) {
       node.addEventListener("input", function () {
         r[node.getAttribute("data-k")] = node.value;
         var k = node.getAttribute("data-k");
-        if (["partsAmount", "partsMarkup", "laborAmount", "diagnosticFeePaid", "intakeType"].indexOf(k) !== -1)
+        if (["partsAmount", "partsMarkup", "laborAmount", "expediteFee", "diagnosticFeePaid", "intakeType"].indexOf(k) !== -1)
           paintTotals();
         if (["remoteHours", "remoteRateType"].indexOf(k) !== -1)
           paintRemote();
         // parts also feed the on-site receipt, so repaint on-site on parts changes too
-        if (["onsiteTripCharge", "onsiteHours", "partsAmount", "partsMarkup"].indexOf(k) !== -1)
+        if (["onsiteTripCharge", "onsiteHours", "onsiteParts", "partsMarkup"].indexOf(k) !== -1)
           paintOnsite();
       });
       node.addEventListener("change", function () {
@@ -2309,14 +2416,25 @@ window.RT_ageTier = function (iso) {
       var diagPaid = (r.diagnosticFeePaid === "Yes");
       var rows =
         trow("Parts cost", money(t.parts)) +
-        trow("Parts billed (+" + t.markupPct + "%)", money(t.markedParts)) +
-        trow("Labor", money(t.labor)) +
+        trow("Parts billed (+" + t.markupPct + "%" + (t.markupSource === "override" ? " override" : "") + ")", money(t.markedParts)) +
+        trow("Labor", money(t.labor));
+      if (t.expedite > 0) rows += trow("Expedite fee", money(t.expedite));
+      rows +=
         trow("Subtotal", money(t.plSubtotal)) +
         trow("Sales tax (7%)", money(t.plTax));
       if (diagPaid && t.diagCredit > 0) {
         rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
       }
       rows += trow("Total due", money(t.finalDue), true);
+      if (state.isAdmin) {
+        rows += marginPie([
+          { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
+          { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
+          { label: "Labor", value: t.labor, color: "#1A2E5A" },
+          { label: "Expedite", value: t.expedite, color: "#E07B39" },
+          { label: "Sales tax", value: t.plTax, color: "#7A8CA3" },
+        ], "Total", t.plWithTax, { label: "Job margin", value: t.jobMargin });
+      }
       document.getElementById("totalsBox").innerHTML = rows;
     }
     function paintRemote() {
@@ -2336,12 +2454,21 @@ window.RT_ageTier = function (iso) {
         trow("Trip charge", money(os.trip)) +
         trow("Labor (" + os.hours + " hr × " + money(os.hourly) + ")", money(os.labor));
       if (os.parts > 0) {
-        rows += trow("Parts billed (+" + os.markupPct + "%)", money(os.markedParts));
+        rows += trow("Parts billed (+" + os.markupPct + "%" + (os.markupSource === "override" ? " override" : "") + ")", money(os.markedParts));
       }
       rows +=
         trow("Subtotal", money(os.subtotal)) +
         trow("Sales tax (7%)", money(os.tax)) +
         trow("On-site total", money(os.total), true);
+      if (state.isAdmin) {
+        rows += marginPie([
+          { label: "Parts cost", value: os.parts, color: "#9aa0a6" },
+          { label: "Parts margin", value: os.partsMargin, color: "#C8A85A" },
+          { label: "Labor", value: os.labor, color: "#1A2E5A" },
+          { label: "Trip charge", value: os.trip, color: "#E07B39" },
+          { label: "Sales tax", value: os.tax, color: "#7A8CA3" },
+        ], "Total", os.total, { label: "Job margin", value: os.jobMargin });
+      }
       box.innerHTML = rows;
     }
 
@@ -2416,7 +2543,7 @@ window.RT_ageTier = function (iso) {
   function fld(label, control, cls) {
     return '<label class="fld ' + (cls || "") + '"><span class="lab">' + esc(label) + "</span>" + control + "</label>";
   }
-  function inp(k, v) { return '<input data-k="' + k + '" value="' + esc(v) + '" />'; }
+  function inp(k, v, ph) { return '<input data-k="' + k + '" value="' + esc(v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + ' />'; }
   function ta(k, v, rows) { return '<textarea data-k="' + k + '" rows="' + rows + '">' + esc(v) + "</textarea>"; }
   function sel(k, list, v) {
     return '<select data-k="' + k + '">' + list.map(function (o) {
@@ -2427,8 +2554,49 @@ window.RT_ageTier = function (iso) {
     return '<div class="trow' + (big ? " big" : "") + '"><span>' + esc(label) + "</span><span>" + esc(val) + "</span></div>";
   }
 
+  // Admin-only donut: slices = [{label, value, color}]. Center shows Job Margin.
+  // Pure hand-rolled SVG, no library. Returns "" when nothing to show.
+  // extraLine (optional): { label, value } rendered as a highlighted row under
+  // the legend — used to surface Job Margin while the center shows the grand total.
+  function marginPie(slices, centerLabel, centerValue, extraLine) {
+    var total = slices.reduce(function (s, x) { return s + (x.value > 0 ? x.value : 0); }, 0);
+    if (total <= 0) return "";
+    var cx = 70, cy = 70, r = 58, c = 2 * Math.PI * r;
+    var off = 0, segs = "", legend = "";
+    slices.forEach(function (x) {
+      if (x.value <= 0) return;
+      var frac = x.value / total, len = frac * c;
+      segs +=
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" ' +
+        'stroke="' + x.color + '" stroke-width="22" ' +
+        'stroke-dasharray="' + len.toFixed(2) + " " + (c - len).toFixed(2) + '" ' +
+        'stroke-dashoffset="' + (-off).toFixed(2) + '" ' +
+        'transform="rotate(-90 ' + cx + " " + cy + ')"></circle>';
+      legend +=
+        '<div class="pl-row"><span class="pl-sw" style="background:' + x.color + '"></span>' +
+        '<span class="pl-lb">' + esc(x.label) + '</span>' +
+        '<span class="pl-val">' + esc(money(x.value)) + " (" + Math.round(frac * 100) + "%)</span></div>";
+      off += len;
+    });
+    if (extraLine && extraLine.value != null) {
+      legend +=
+        '<div class="pl-row pl-extra"><span class="pl-sw" style="background:transparent"></span>' +
+        '<span class="pl-lb">' + esc(extraLine.label) + '</span>' +
+        '<span class="pl-val">' + esc(money(extraLine.value)) + "</span></div>";
+    }
+    return '<div class="marginpie">' +
+      '<svg viewBox="0 0 140 140" width="140" height="140" aria-label="Job total breakdown">' +
+        segs +
+        '<text x="70" y="64" text-anchor="middle" class="pie-cv">' + esc(money(centerValue)) + "</text>" +
+        '<text x="70" y="82" text-anchor="middle" class="pie-cl">' + esc(centerLabel) + "</text>" +
+      "</svg>" +
+      '<div class="pie-legend">' + legend + "</div>" +
+    "</div>";
+  }
+
   // ---------------- Document generator ----------------
   function openDoc(r, type) {
+    seedDropdownDefaults(r);
     var overlay = el('<div class="overlay"></div>');
     overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); });
     var wrap = el('<div class="docwrap"></div>');
@@ -2718,8 +2886,8 @@ window.RT_ageTier = function (iso) {
         '<table class="rmeta"><tbody>' +
           "<tr><td>Date</td><td>Receipt No.</td></tr>" +
           '<tr class="v"><td>' + esc(fmtDate(today)) + "</td><td>" + esc(oSaleNo) + "</td></tr>" +
-          '<tr><td colspan="2" class="pm">Payment Method</td></tr>' +
-          '<tr class="v"><td colspan="2">' + esc(r.paymentMethod || "") + "</td></tr>" +
+          '<tr><td colspan="2" class="pm">Paid By</td></tr>' +
+          '<tr class="v"><td colspan="2">' + esc(r.onsitePayMethod || "") + "</td></tr>" +
         "</tbody></table>";
       var oRtop = '<div class="rtop">' + oSoldTo + oMetaTbl + "</div>";
 
@@ -2818,7 +2986,12 @@ window.RT_ageTier = function (iso) {
           '<tr><td class="d"><b>Parts &amp; Labor</b>' +
             (r.problem ? '<div class="rdesc"><b>Problem reported:</b> ' + esc(r.problem) + "</div>" : "") +
             (r.workPerformed ? '<div class="rdesc"><b>Work performed:</b> ' + esc(r.workPerformed) + "</div>" : "") +
-          '</td><td class="a">' + money(t.plSubtotal) + "</td></tr>" +
+          '</td><td class="a">' + money(t.plBase) + "</td></tr>" +
+          (t.expedite > 0
+            ? '<tr><td class="d"><b>Expedite Fee</b>' +
+                '<div class="rdesc">Priority rush service</div>' +
+              '</td><td class="a">' + money(t.expedite) + "</td></tr>"
+            : "") +
         "</tbody></table>";
       var fTot =
         '<table class="rtot"><tbody>' +
