@@ -113,11 +113,12 @@ window.RT_ageTier = function (iso) {
   }
 
   var STATUSES = [
-    "Checked In", "Diagnosed", "Waiting on Parts",
+    "Checked In", "Diagnosing", "Diagnosed", "Waiting on Parts",
     "In Repair", "Ready for Pickup", "Picked Up",
   ];
   var STATUS_STYLE = {
     "Checked In":       { bg: "#E8EEFB", fg: "#27408B", dot: "#3B5BA5" },
+    "Diagnosing":       { bg: "#EEF1F8", fg: "#3A4A7A", dot: "#5B6CA8" },
     "Diagnosed":        { bg: "#FBF3D9", fg: "#7A5C00", dot: "#C8A85A" },
     "Waiting on Parts": { bg: "#FBE7D6", fg: "#9A4A12", dot: "#E07B39" },
     "In Repair":        { bg: "#E6F0E1", fg: "#3C6B2E", dot: "#5E9A4B" },
@@ -135,7 +136,7 @@ window.RT_ageTier = function (iso) {
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "On-Site Service Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
   // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
-  var WORKING_STATES = ["Checked In", "Diagnosed", "Waiting on Parts", "In Repair"];
+  var WORKING_STATES = ["Checked In", "Diagnosing", "Diagnosed", "Waiting on Parts", "In Repair"];
   var BRANDS = ["Dell", "HP", "Lenovo", "ASUS", "Acer", "Apple", "MSI", "Microsoft Surface",
     "Samsung", "Toshiba", "Sony", "LG", "Razer", "Gigabyte", "Alienware", "Custom Build"];
   // Concord + surrounding Cabarrus / Charlotte-metro cities and zips
@@ -918,13 +919,15 @@ window.RT_ageTier = function (iso) {
 
     function paintStats(active) {
       var cCheckedIn = active.filter(function (r) { return r.status === "Checked In"; }).length;
+      var cDiagnosing = active.filter(function (r) { return r.status === "Diagnosing"; }).length;
       var cDiagnosed = active.filter(function (r) { return r.status === "Diagnosed"; }).length;
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
-      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
+      var cActive = cCheckedIn + cDiagnosing + cDiagnosed + cWaiting + cInRepair;
       statsHost.innerHTML =
         '<div class="stats">' +          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+          statCard(cDiagnosing, "Diagnosing", "#5B6CA8", "Diagnosing") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
           statCard(cInRepair, "In repair", "#5E9A4B", "In Repair") +
@@ -1185,14 +1188,16 @@ window.RT_ageTier = function (iso) {
     // stat cards (active view only) — clickable to filter
     if (state.view === "active") {
       var cCheckedIn = active.filter(function (r) { return r.status === "Checked In"; }).length;
+      var cDiagnosing = active.filter(function (r) { return r.status === "Diagnosing"; }).length;
       var cDiagnosed = active.filter(function (r) { return r.status === "Diagnosed"; }).length;
       var cWaiting = active.filter(function (r) { return r.status === "Waiting on Parts"; }).length;
       var cInRepair = active.filter(function (r) { return r.status === "In Repair"; }).length;
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
       // "Active" = work-in-progress only; Ready for Pickup is done, counted separately
-      var cActive = cCheckedIn + cDiagnosed + cWaiting + cInRepair;
+      var cActive = cCheckedIn + cDiagnosing + cDiagnosed + cWaiting + cInRepair;
       var statsEl = el(
         '<div class="stats">' +          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+          statCard(cDiagnosing, "Diagnosing", "#5B6CA8", "Diagnosing") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
           statCard(cInRepair, "In repair", "#5E9A4B", "In Repair") +
