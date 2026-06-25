@@ -3084,8 +3084,7 @@ window.RT_ageTier = function (iso) {
         "</tbody></table>" +
         '<div class="dstrip">Diagnostic Fee: ' + money(SHOP.diagFee) + "  +  7% Sales Tax: " + money(dTax) +
           "  =  TOTAL PAID: " + money(SHOP.diagFee + dTax) + "</div>" +
-        (r.paymentMethod ? '<div class="dpay">Payment method: ' + esc(r.paymentMethod) + "</div>" : "") +
-        sign;
+        (r.paymentMethod ? '<div class="dpay">Payment method: ' + esc(r.paymentMethod) + "</div>" : "");
     } else {
       // Quote — single bottom-line price from the "Estimated cost" field, plus tax.
       // (We don't itemize parts/labor to the customer; one number, the way we quote.)
