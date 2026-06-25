@@ -3023,7 +3023,7 @@ window.RT_ageTier = function (iso) {
 
     // Customer block (always)
     var customer =
-      frow2(f("Name", r.customerName), f("Date", fmtDate(today))) +
+      frow2(f("Name", r.customerName), f("Date", fmtDate(r.dateCheckedIn || today))) +
       frow2(f("Address", r.address), f("Phone", r.phone)) +
       frow2(f("City/State/Zip", r.cityStateZip), f("Cell Phone", r.cellPhone)) +
       frow2(f("Email", r.email), f("Preferred Contact", r.preferredContact));
