@@ -1501,6 +1501,31 @@ window.RT_ageTier = function (iso) {
     for (var i = 0; i < ROLE_OPTIONS.length; i++) if (ROLE_OPTIONS[i].v === v) return ROLE_OPTIONS[i].label;
     return v;
   }
+  // Calls the admin-users Edge Function with the current admin's session token.
+  // payload e.g. { action:"create", email, password, role, displayName }
+  //          or  { action:"set-password", email, password }
+  function callAdminFn(payload) {
+    if (!sb) return Promise.reject(new Error("No database connection."));
+    return sb.auth.getSession().then(function (res) {
+      var token = res && res.data && res.data.session && res.data.session.access_token;
+      if (!token) throw new Error("You're not signed in.");
+      return fetch(CFG.SUPABASE_URL + "/functions/v1/admin-users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+          "apikey": CFG.SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify(payload)
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error((j && j.error) || ("Request failed (" + r.status + ")"));
+          return j;
+        });
+      });
+    });
+  }
+
   function renderAdminPage() {
     state.onAdminPage = true;
     app.innerHTML = "";
@@ -1601,8 +1626,28 @@ window.RT_ageTier = function (iso) {
         roleTd.appendChild(sel);
         tr.appendChild(roleTd);
 
-        // remove button
+        // remove button + set-password button
         var actTd = el("<td></td>");
+        var pwBtn = el('<button class="admin-setpw" type="button" title="Set this user\'s password">Set password</button>');
+        pwBtn.addEventListener("click", function () {
+          var who = u.display_name || u.email;
+          var np = window.prompt("Set a new password for " + who + " (min 8 characters):", "");
+          if (np === null) return;            // cancelled
+          np = String(np);
+          if (np.length < 8) { toast("Password must be at least 8 characters."); return; }
+          pwBtn.disabled = true; pwBtn.textContent = "Setting…";
+          callAdminFn({ action: "set-password", email: u.email, password: np })
+            .then(function () {
+              pwBtn.disabled = false; pwBtn.textContent = "Set password";
+              toast("Password updated for " + who);
+            })
+            .catch(function (e) {
+              pwBtn.disabled = false; pwBtn.textContent = "Set password";
+              toast((e && e.message) || "Couldn't set password");
+              console.error(e);
+            });
+        });
+        actTd.appendChild(pwBtn);
         if (isLastAdmin) {
           actTd.appendChild(el('<span class="admin-locked">last admin</span>'));
         } else {
@@ -1628,13 +1673,78 @@ window.RT_ageTier = function (iso) {
 
       host.appendChild(table);
 
-      // Add User — visible but not yet wired to create a login (next build step)
-      var addRow = el('<div class="admin-add"></div>');
-      var addBtn = el('<button class="btn btn-pri" type="button" disabled>+ Add User</button>');
-      addBtn.title = "Coming next: create a brand-new login from here";
-      addRow.appendChild(addBtn);
-      addRow.appendChild(el('<div class="admin-add-note">Adding a brand-new login is the next piece we\'re building. For now, roles for existing users are fully managed here.</div>'));
-      host.appendChild(addRow);
+      // ---- Add User: create a brand-new login (admin only) ----
+      var adminSlotOpenForAdd = adminCount < MAX_ADMINS;
+      var addWrap = el('<div class="admin-add"></div>');
+      addWrap.appendChild(el('<div class="admin-add-title">Add a new user</div>'));
+
+      var form = el('<div class="admin-add-form"></div>');
+      var nameIn = el('<input type="text" class="admin-in" placeholder="Name (optional)" autocomplete="off" />');
+      var emailIn = el('<input type="email" class="admin-in" placeholder="Email" autocomplete="off" />');
+
+      var pwWrap = el('<div class="admin-pw"></div>');
+      var pwIn = el('<input type="password" class="admin-in" placeholder="Password (min 8 chars)" autocomplete="new-password" />');
+      var pwEye = el('<button type="button" class="admin-pw-eye" aria-label="Show password" title="Show password">' + eyeSVG(false) + '</button>');
+      pwEye.addEventListener("click", function () {
+        var show = pwIn.type === "password";
+        pwIn.type = show ? "text" : "password";
+        pwEye.innerHTML = eyeSVG(show);
+        pwEye.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        pwEye.title = show ? "Hide password" : "Show password";
+        pwIn.focus();
+      });
+      pwWrap.appendChild(pwIn);
+      pwWrap.appendChild(pwEye);
+
+      var roleSel = el('<select class="admin-in admin-role"></select>');
+      ROLE_OPTIONS.forEach(function (o) {
+        if (o.v === "admin" && !adminSlotOpenForAdd) return; // hide Admin when 2-admin cap is full
+        roleSel.appendChild(el('<option value="' + o.v + '"' + (o.v === "full" ? " selected" : "") + ">" + esc(o.label) + "</option>"));
+      });
+
+      var addBtn = el('<button class="btn btn-pri" type="button">+ Add User</button>');
+      var msg = el('<div class="admin-add-msg" style="display:none"></div>');
+
+      function showMsg(text, ok) {
+        msg.textContent = text;
+        msg.className = "admin-add-msg " + (ok ? "ok" : "err");
+        msg.style.display = "block";
+      }
+
+      addBtn.addEventListener("click", function () {
+        var email = (emailIn.value || "").trim().toLowerCase();
+        var pass = pwIn.value || "";
+        var role = roleSel.value;
+        var name = (nameIn.value || "").trim();
+
+        if (!email || email.indexOf("@") === -1) { showMsg("Enter a valid email.", false); emailIn.focus(); return; }
+        if (pass.length < 8) { showMsg("Password must be at least 8 characters.", false); pwIn.focus(); return; }
+
+        addBtn.disabled = true; addBtn.textContent = "Adding…";
+        msg.style.display = "none";
+        callAdminFn({ action: "create", email: email, password: pass, role: role, displayName: name })
+          .then(function () {
+            toast(esc(name || email) + " added as " + roleLabel(role));
+            paintAdminUsers(host); // refresh list + admin counts
+          })
+          .catch(function (e) {
+            addBtn.disabled = false; addBtn.textContent = "+ Add User";
+            showMsg((e && e.message) || "Couldn't add user.", false);
+            console.error(e);
+          });
+      });
+
+      form.appendChild(nameIn);
+      form.appendChild(emailIn);
+      form.appendChild(pwWrap);
+      form.appendChild(roleSel);
+      form.appendChild(addBtn);
+      addWrap.appendChild(form);
+      if (!adminSlotOpenForAdd) {
+        addWrap.appendChild(el('<div class="admin-add-note">Admin slots are full (' + MAX_ADMINS + '). Lower an existing admin to add another.</div>'));
+      }
+      addWrap.appendChild(msg);
+      host.appendChild(addWrap);
     }).catch(function (e) {
       host.innerHTML = '<div class="admin-loading">Couldn\'t load users.<br><span style="font-size:12px;color:#999">' + esc((e && e.message) || "error") + "</span></div>";
       console.error(e);
