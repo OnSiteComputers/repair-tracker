@@ -926,7 +926,8 @@ window.RT_ageTier = function (iso) {
       var cReady = active.filter(function (r) { return r.status === "Ready for Pickup"; }).length;
       var cActive = cCheckedIn + cDiagnosing + cDiagnosed + cWaiting + cInRepair;
       statsHost.innerHTML =
-        '<div class="stats">' +          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
+        '<div class="stats">' +          statCard(cActive, "All active", "#6B7280", "All") +
+          statCard(cCheckedIn, "Checked in", "#3B5BA5", "Checked In") +
           statCard(cDiagnosing, "Diagnosing", "#5B6CA8", "Diagnosing") +
           statCard(cDiagnosed, "Diagnosed", "#C8A85A", "Diagnosed") +
           statCard(cWaiting, "Waiting on parts", "#E07B39", "Waiting on Parts") +
@@ -937,7 +938,7 @@ window.RT_ageTier = function (iso) {
         var f = c.getAttribute("data-filter");
         if (statusFilter === f) c.classList.add("active");
         c.addEventListener("click", function () {
-          statusFilter = (statusFilter === f && f !== "All") ? "All" : f;
+          statusFilter = f;       // click filters; clicking again keeps it. Use "All" card to clear.
           paint();
         });
       });
@@ -1208,8 +1209,8 @@ window.RT_ageTier = function (iso) {
         var f = c.getAttribute("data-filter");
         if (state.statusFilter === f) c.classList.add("active");
         c.addEventListener("click", function () {
-          // toggle: clicking the already-active card clears back to All
-          state.statusFilter = (state.statusFilter === f && f !== "All") ? "All" : f;
+          // click filters; clicking again keeps it. The All option in the dropdown clears.
+          state.statusFilter = f;
           renderApp();
         });
       });
