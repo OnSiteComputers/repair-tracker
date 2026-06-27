@@ -130,9 +130,9 @@ window.RT_ageTier = function (iso) {
   var YESNO = ["Yes", "No"];
   var INTAKE_TYPES = ["Appointment", "Walk-in"];
   var JOB_TYPES = ["Repair", "Remote Support", "On-Site Service"];
-  var PAY_METHODS = ["Cash", "Card", "Check", "PayByLink", "Other"];
+  var PAY_METHODS = ["Cash", "Credit", "Debit", "Zelle", "Check", "Other"];
   var REMOTE_RATE_TYPES = ["Regular ($199.99 total)", "Emergency ($299.99 total)"];
-  var REMOTE_PAY = ["Debit", "Credit"];
+  var REMOTE_PAY = PAY_METHODS;  // unified: all payment dropdowns use the same list
   var DOC_TYPES = ["Service Order", "Quote", "Drop-Off Receipt", "Final Receipt", "Diagnostic Receipt", "Remote Support Receipt", "On-Site Service Receipt", "Label"];
   var DEVICES = ["Laptop", "Desktop"];
   // "Active" = work-in-progress; Ready for Pickup / Picked Up are not active
@@ -2023,6 +2023,7 @@ window.RT_ageTier = function (iso) {
 (function () {
   "use strict";
   var R = window.__RT;
+  var state = R.mgmt.state;   // shared state lives in IIFE #2 (exported on __RT.mgmt); pie/admin checks need it here
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
   var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
   var JOB_TYPES = R.JOB_TYPES;
