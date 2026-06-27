@@ -2217,20 +2217,24 @@ window.RT_ageTier = function (iso) {
           fld("Accessories received", accessoriesField(r.accessories), "full") +
           fld("Backup status", sel("backupStatus", BACKUP_STATUS, r.backupStatus))
         )
-      ) +
+      , "Repair") +
       section("Problem & status",
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
         frow(
+          '<div data-repair-only="1" style="flex:1 1 140px">' +
           fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
+          '</div>' +
           (M.canChangeStatus()
             ? fld("Current status", sel("status", STATUSES, r.status))
             : fld("Current status (managers & admins only)", '<select data-k="status" disabled>' + STATUSES.map(function (o) {
                 return '<option' + (o === r.status ? " selected" : "") + ">" + esc(o) + "</option>";
               }).join("") + "</select>"))
         ) +
+        '<div data-repair-only="1">' +
         frow(
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts))
         ) +
+        '</div>' +
         '<div data-repair-only="1">' +
         frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(
