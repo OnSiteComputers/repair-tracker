@@ -47,6 +47,9 @@ window.RT_ageTier = function (iso) {
     remoteEmergency: 280.36, // pre-tax; +7% = $299.99 all-in
     onsiteTrip: 120,         // default on-site trip charge (editable per ticket)
     onsiteHourly: 195,       // on-site labor rate per hour
+    tripFloor: 75,           // minimum trip charge (covers ~23 min round trip at the rate below)
+    tripRate: 195,           // $/hr applied to round-trip DRIVE time once past the floor
+    tripWorkerUrl: "https://trip-calc.greg-ff0.workers.dev",  // Cloudflare Worker that returns drive time
   };
 
   // ---------- Parts Markup Matrix ----------
@@ -2270,7 +2273,11 @@ window.RT_ageTier = function (iso) {
       ) +
       section("On-Site Service (separate receipt)",
         frow(
-          fld("Trip charge", inp("onsiteTripCharge", r.onsiteTripCharge)) +
+          fld("Trip charge",
+            inp("onsiteTripCharge", r.onsiteTripCharge) +
+            '<button type="button" class="btn-trip" data-trip-calc="1">Calculate trip</button>' +
+            '<div class="trip-readout" data-trip-readout="1"></div>'
+          ) +
           fld("On-site hours (× $" + SHOP.onsiteHourly + "/hr)", inp("onsiteHours", r.onsiteHours))
         ) +
         frow(
@@ -2303,6 +2310,58 @@ window.RT_ageTier = function (iso) {
         paintOnsite();
       });
     });
+
+    // ----- Calculate trip: ask the Worker for round-trip drive time, fill the charge -----
+    var tripBtn = body.querySelector('[data-trip-calc]');
+    var tripReadout = body.querySelector('[data-trip-readout]');
+    if (tripBtn) {
+      tripBtn.addEventListener("click", function () {
+        var addr = [r.address, r.cityStateZip].filter(Boolean).join(", ").trim();
+        if (addr.length < 5) {
+          tripReadout.textContent = "Enter the customer address first.";
+          tripReadout.className = "trip-readout err";
+          return;
+        }
+        tripBtn.disabled = true;
+        var oldLabel = tripBtn.textContent;
+        tripBtn.textContent = "Calculating…";
+        tripReadout.className = "trip-readout";
+        tripReadout.textContent = "Looking up drive time…";
+        fetch(SHOP.tripWorkerUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: addr }),
+        })
+        .then(function (resp) { return resp.json(); })
+        .then(function (data) {
+          if (!data || !data.ok) {
+            tripReadout.className = "trip-readout err";
+            tripReadout.textContent = (data && data.error) ? data.error : "Lookup failed.";
+            return;
+          }
+          var hours = num(data.roundTripHours);
+          var charge = Math.max(SHOP.tripFloor, hours * SHOP.tripRate);
+          charge = Math.round(charge * 100) / 100;
+          r.onsiteTripCharge = String(charge);
+          var fldNode = body.querySelector('[data-k="onsiteTripCharge"]');
+          if (fldNode) fldNode.value = r.onsiteTripCharge;
+          var rt = data.roundTripMinutes;
+          var floored = (charge <= SHOP.tripFloor + 0.001 && hours * SHOP.tripRate < SHOP.tripFloor);
+          tripReadout.className = "trip-readout ok";
+          tripReadout.textContent = rt + " min round trip"
+            + (floored ? "  →  minimum $" + SHOP.tripFloor : "  →  " + hours.toFixed(2) + " hr × $" + SHOP.tripRate);
+          paintOnsite();
+        })
+        .catch(function () {
+          tripReadout.className = "trip-readout err";
+          tripReadout.textContent = "Couldn't reach the trip calculator.";
+        })
+        .then(function () {
+          tripBtn.disabled = false;
+          tripBtn.textContent = oldLabel;
+        });
+      });
+    }
 
     // wire dropdown-with-"Other…" combos -> r
     body.querySelectorAll("[data-combo]").forEach(function (selNode) {
