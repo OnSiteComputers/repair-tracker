@@ -2173,7 +2173,7 @@ window.RT_ageTier = function (iso) {
 
     modal.appendChild(el(
       '<div class="mhead"><div>' +
-        '<div class="mtitle">' + (isNew ? "New repair" : "Edit repair") + "</div>" +
+        '<div class="mtitle" id="mtitle">' + esc(r.jobType || "Repair") + "</div>" +
         (isNew ? "" : '<div class="msub">' + esc(r.customerName) + " · checked in " + esc(fmtDate(r.dateCheckedIn)) + "</div>") +
       '</div><button class="x">✕</button></div>'
     ));
@@ -2603,6 +2603,8 @@ window.RT_ageTier = function (iso) {
       body.querySelectorAll(".sec[data-job]").forEach(function (sec) {
         sec.style.display = (sec.getAttribute("data-job") === jt) ? "" : "none";
       });
+      var titleEl = document.getElementById("mtitle");
+      if (titleEl) titleEl.textContent = jt;
     }
     syncJobSections();
     var jobSel = body.querySelector('[data-k="jobType"]');
