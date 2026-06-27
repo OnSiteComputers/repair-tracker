@@ -2231,14 +2231,18 @@ window.RT_ageTier = function (iso) {
         frow(
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts))
         ) +
+        '<div data-repair-only="1">' +
         frow(fld("Our Diagnosis (prints on Diagnostic Receipt & Quote)", ta("diagnosticFindings", r.diagnosticFindings, 3), "full")) +
         frow(
           fld("Estimated cost to fix (shown on status board)", inp("estimatedCost", r.estimatedCost)) +
           fld("Est. completion date" + (r.estCompletion && String(r.estCompletion).trim() ? " — already given: " + esc(fmtDate(r.estCompletion)) : " (none given yet)") + " (shown on status board)", dateInp("estCompletion", r.estCompletion))
         ) +
+        '</div>' +
         frow(fld("Notes (shown on tracker sheet only — not printed)", ta("trackerNotes", r.trackerNotes, 3), "full")) +
         frow(fld("Call notes (from phone calls — shown on tracker sheet)", ta("callNotes", r.callNotes, 3), "full")) +
-        frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full"))
+        '<div data-repair-only="1">' +
+        frow(fld("Work performed (prints on Final Receipt)", ta("workPerformed", r.workPerformed, 4), "full")) +
+        '</div>'
       ) +
       section("Photos (print on Diagnostic & Final receipts)",
         '<div class="photoblock">' +
@@ -2602,6 +2606,10 @@ window.RT_ageTier = function (iso) {
       var jt = r.jobType || "Repair";
       body.querySelectorAll(".sec[data-job]").forEach(function (sec) {
         sec.style.display = (sec.getAttribute("data-job") === jt) ? "" : "none";
+      });
+      // repair-bench-only fields (diagnosis, estimate, Final-Receipt work) — Repair only
+      body.querySelectorAll("[data-repair-only]").forEach(function (node) {
+        node.style.display = (jt === "Repair") ? "" : "none";
       });
       var titleEl = document.getElementById("mtitle");
       if (titleEl) titleEl.textContent = jt;
