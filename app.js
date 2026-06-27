@@ -223,6 +223,7 @@ window.RT_ageTier = function (iso) {
     remoteWork: "remote_work",
     remotePayMethod: "remote_pay_method",
     onsiteTripCharge: "onsite_trip_charge",
+    itemizeTrip: "itemize_trip",
     onsiteHours: "onsite_hours",
     onsiteWork: "onsite_work",
     onsiteParts: "onsite_parts",
@@ -279,7 +280,7 @@ window.RT_ageTier = function (iso) {
       trackerNotes: "", callNotes: "", lastEditedBy: "", lastEditedAt: "",
       partsAmount: "", partsMarkup: "", laborAmount: "", expediteFee: "", paymentMethod: "", dateCompleted: "",
       remoteHours: "", remoteRateType: "Regular ($199.99 total)", remoteWork: "", remotePayMethod: "Credit",
-      onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "", onsiteParts: "", onsitePayMethod: "Credit",
+      onsiteTripCharge: String(SHOP.onsiteTrip), onsiteHours: "", onsiteWork: "", onsiteParts: "", onsitePayMethod: "Credit", itemizeTrip: "No",
       photoUrls: [],
       completed: false,
     };
@@ -2284,6 +2285,9 @@ window.RT_ageTier = function (iso) {
           fld("On-site parts cost", inp("onsiteParts", r.onsiteParts)) +
           fld("Paid by", sel("onsitePayMethod", REMOTE_PAY, r.onsitePayMethod))
         ) +
+        frow(
+          fld("Show trip charge as its own line on receipt?", sel("itemizeTrip", YESNO, r.itemizeTrip))
+        ) +
         frow(fld("On-site work performed (prints on On-Site Service Receipt)", ta("onsiteWork", r.onsiteWork, 4), "full")) +
         '<div class="onsite-note">On-site parts use this section\'s own Parts cost (kept separate from the repair Charges above) and are marked up at the same % as the Charges section.</div>' +
         '<div class="totals" id="onsiteTotalsBox"></div>'
@@ -2957,13 +2961,25 @@ window.RT_ageTier = function (iso) {
         "</tbody></table>";
       var oRtop = '<div class="rtop">' + oSoldTo + oMetaTbl + "</div>";
 
-      // Line items: trip charge, labor, and parts (only if parts entered)
-      var oRows =
-        '<tr><td class="d"><b>On-Site Trip Charge</b></td><td class="a">' + money(os.trip) + "</td></tr>" +
-        '<tr><td class="d"><b>On-Site Labor</b>' +
-          '<div class="rdesc">' + os.hours + " hr &times; " + money(os.hourly) + "/hr" +
-          (r.onsiteWork ? "<br>" + esc(r.onsiteWork) : "") + "</div>" +
-        '</td><td class="a">' + money(os.labor) + "</td></tr>";
+      // Line items. By default the trip charge is FOLDED INTO the service line
+      // (one "On-Site Service" number) so there's no standalone trip-charge line
+      // for customers to balk at. Set "Show trip charge as its own line" = Yes to
+      // itemize it. Same money either way.
+      var oRows;
+      if (r.itemizeTrip === "Yes") {
+        oRows =
+          '<tr><td class="d"><b>On-Site Trip Charge</b></td><td class="a">' + money(os.trip) + "</td></tr>" +
+          '<tr><td class="d"><b>On-Site Labor</b>' +
+            '<div class="rdesc">' + os.hours + " hr &times; " + money(os.hourly) + "/hr" +
+            (r.onsiteWork ? "<br>" + esc(r.onsiteWork) : "") + "</div>" +
+          '</td><td class="a">' + money(os.labor) + "</td></tr>";
+      } else {
+        // folded: trip + labor combined into a single service line
+        oRows =
+          '<tr><td class="d"><b>On-Site Service</b>' +
+            (r.onsiteWork ? '<div class="rdesc">' + esc(r.onsiteWork) + "</div>" : "") +
+          '</td><td class="a">' + money(os.trip + os.labor) + "</td></tr>";
+      }
       if (os.parts > 0) {
         oRows +=
           '<tr><td class="d"><b>Parts</b>' +
