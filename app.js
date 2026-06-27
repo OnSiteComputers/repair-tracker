@@ -2262,7 +2262,7 @@ window.RT_ageTier = function (iso) {
           fld("Payment method", '<select data-k="paymentMethod"><option value="">—</option>' + opt(PAY_METHODS, r.paymentMethod) + "</select>")
         ) +
         '<div class="totals" id="totalsBox"></div>'
-      ) +
+      , "Repair") +
       section("Remote Support (separate receipt)",
         frow(
           fld("Remote hours", inp("remoteHours", r.remoteHours)) +
@@ -2271,7 +2271,7 @@ window.RT_ageTier = function (iso) {
         ) +
         frow(fld("Remote work performed (prints on Remote Support Receipt)", ta("remoteWork", r.remoteWork, 4), "full")) +
         '<div class="totals" id="remoteTotalsBox"></div>'
-      ) +
+      , "Remote Support") +
       section("On-Site Service (separate receipt)",
         frow(
           fld("Trip charge",
@@ -2291,7 +2291,7 @@ window.RT_ageTier = function (iso) {
         frow(fld("On-site work performed (prints on On-Site Service Receipt)", ta("onsiteWork", r.onsiteWork, 4), "full")) +
         '<div class="onsite-note">On-site parts use this section\'s own Parts cost (kept separate from the repair Charges above) and are marked up at the same % as the Charges section.</div>' +
         '<div class="totals" id="onsiteTotalsBox"></div>'
-      );
+      , "On-Site Service");
     modal.appendChild(body);
 
     // wire inputs -> r
@@ -2595,6 +2595,24 @@ window.RT_ageTier = function (iso) {
     paintTotals();
     paintRemote();
     paintOnsite();
+
+    // ----- show only the service section that matches the job type -----
+    // Blank/legacy job type is treated as "Repair" so old tickets show Charges.
+    function syncJobSections() {
+      var jt = r.jobType || "Repair";
+      body.querySelectorAll(".sec[data-job]").forEach(function (sec) {
+        sec.style.display = (sec.getAttribute("data-job") === jt) ? "" : "none";
+      });
+    }
+    syncJobSections();
+    var jobSel = body.querySelector('[data-k="jobType"]');
+    if (jobSel) {
+      jobSel.addEventListener("change", function () {
+        r.jobType = jobSel.value;
+        syncJobSections();
+      });
+    }
+
     var first = body.querySelector("input"); if (first) first.focus();
 
     function onEsc(e) { if (e.key === "Escape") close(); }
@@ -2606,8 +2624,9 @@ window.RT_ageTier = function (iso) {
   }
 
   // form html helpers
-  function section(title, inner) {
-    return '<div class="sec"><div class="sect">' + esc(title) + '</div><div>' + inner + "</div></div>";
+  function section(title, inner, jobTag) {
+    var attr = jobTag ? ' data-job="' + jobTag + '"' : '';
+    return '<div class="sec"' + attr + '><div class="sect">' + esc(title) + '</div><div>' + inner + "</div></div>";
   }
   function frow(inner) { return '<div class="frow">' + inner + "</div>"; }
   function fld(label, control, cls) {
