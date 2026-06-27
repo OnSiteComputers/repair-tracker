@@ -119,10 +119,23 @@ window.RT_ageTier = function (iso) {
     "Checked In", "Diagnosing", "Diagnosed", "Waiting on Parts",
     "In Repair", "Ready for Pickup", "Picked Up",
   ];
+  // Per-job-type status workflows. Repair uses the bench flow above;
+  // Remote and On-Site have their own shorter lifecycles.
+  var STATUSES_REMOTE = ["Scheduled", "In Progress", "Completed"];
+  var STATUSES_ONSITE = ["Scheduled", "On Site", "Completed"];
+  function statusesForJob(jt) {
+    if (jt === "Remote Support") return STATUSES_REMOTE;
+    if (jt === "On-Site Service") return STATUSES_ONSITE;
+    return STATUSES;
+  }
   var STATUS_STYLE = {
     "Checked In":       { bg: "#E8EEFB", fg: "#27408B", dot: "#3B5BA5" },
     "Diagnosing":       { bg: "#EEF1F8", fg: "#3A4A7A", dot: "#5B6CA8" },
     "Diagnosed":        { bg: "#FBF3D9", fg: "#7A5C00", dot: "#C8A85A" },
+    "Scheduled":        { bg: "#E8EEFB", fg: "#27408B", dot: "#3B5BA5" },
+    "In Progress":      { bg: "#FBF3D9", fg: "#7A5C00", dot: "#C8A85A" },
+    "On Site":          { bg: "#FBF3D9", fg: "#7A5C00", dot: "#C8A85A" },
+    "Completed":        { bg: "#E3F2E3", fg: "#1E5C1E", dot: "#2FA82F" },
     "Waiting on Parts": { bg: "#FBE7D6", fg: "#9A4A12", dot: "#E07B39" },
     "In Repair":        { bg: "#E6F0E1", fg: "#3C6B2E", dot: "#5E9A4B" },
     "Ready for Pickup": { bg: "#D9F0D6", fg: "#1F7A1F", dot: "#2FA82F" },
@@ -482,7 +495,7 @@ window.RT_ageTier = function (iso) {
 
   // expose pieces the rest of the file (loaded below) will use
   window.__RT = {
-    SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE,
+    SHOP: SHOP, STATUSES: STATUSES, STATUS_STYLE: STATUS_STYLE, statusesForJob: statusesForJob,
     CONTACT_PREF: CONTACT_PREF, BACKUP_STATUS: BACKUP_STATUS, YESNO: YESNO,
     PAY_METHODS: PAY_METHODS, DOC_TYPES: DOC_TYPES, INTAKE_TYPES: INTAKE_TYPES, JOB_TYPES: JOB_TYPES,
     REMOTE_RATE_TYPES: REMOTE_RATE_TYPES, REMOTE_PAY: REMOTE_PAY,
@@ -1148,26 +1161,32 @@ window.RT_ageTier = function (iso) {
     var root = el('<div></div>');
 
     // header
-    // Completed view = Picked Up (or legacy archived). Active = everything else.
-    // Remote Support and On-Site Service jobs are kept out of both and shown in their own views.
-    function isDone(r) { return r.completed || r.status === "Picked Up"; }
+    // In-Store = active bench repairs. Remote/On-Site = their active jobs.
+    // Completed = ALL finished jobs of every type, in one place.
     function isRemote(r) { return r.jobType === "Remote Support"; }
     function isOnsite(r) { return r.jobType === "On-Site Service"; }
-    var remote = state.repairs.filter(isRemote);
-    var onsite = state.repairs.filter(isOnsite);
+    // A job is "done" when: a repair is Picked Up (or legacy-archived), OR a
+    // remote/on-site job is marked Completed.
+    function isDone(r) {
+      if (r.completed) return true;
+      if (isRemote(r) || isOnsite(r)) return r.status === "Completed";
+      return r.status === "Picked Up";
+    }
+    var remote = state.repairs.filter(function (r) { return isRemote(r) && !isDone(r); });
+    var onsite = state.repairs.filter(function (r) { return isOnsite(r) && !isDone(r); });
     var active = state.repairs.filter(function (r) { return !isDone(r) && !isRemote(r) && !isOnsite(r); });
-    var completed = state.repairs.filter(function (r) { return isDone(r) && !isRemote(r) && !isOnsite(r); });
-    // header "Active" count = working states only (Ready for Pickup excluded)
+    var completed = state.repairs.filter(isDone); // all types, all done
+    // header In-Store count = working states only (Ready for Pickup excluded)
     var activeCount = active.filter(function (r) { return WORKING_STATES.indexOf(r.status) !== -1; }).length;
     var hdr = el(
       '<header class="hdr">' +
         '<div class="brand"><div class="mark">' + doctorMarkSVG() + "</div>" +
           '<div><div class="nm">' + esc(SHOP.name) + '</div><div class="sub">Repair Tracker</div></div></div>' +
         '<nav class="nav">' +
-          '<button class="tab" data-v="active">Active <span class="ct">' + activeCount + "</span></button>" +
-          '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
+          '<button class="tab" data-v="active">In-Store <span class="ct">' + activeCount + "</span></button>" +
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
+          '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
           (state.isAdmin ? '<button class="tab tab-admin" data-admin="1" title="Manage users">Manage users</button>' : "") +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
@@ -1279,14 +1298,21 @@ window.RT_ageTier = function (iso) {
     var isActive = state.view === "active";
     var isRemoteView = state.view === "remote";
     var isOnsiteView = state.view === "onsite";
-    var isDone = function (r) { return r.completed || r.status === "Picked Up"; };
     var isRemote = function (r) { return r.jobType === "Remote Support"; };
     var isOnsite = function (r) { return r.jobType === "On-Site Service"; };
+    // done: repair Picked Up / archived, OR remote/on-site Completed
+    var isDone = function (r) {
+      if (r.completed) return true;
+      if (isRemote(r) || isOnsite(r)) return r.status === "Completed";
+      return r.status === "Picked Up";
+    };
     var list = state.repairs.filter(function (r) {
-      if (isRemoteView) return isRemote(r);
-      if (isOnsiteView) return isOnsite(r);
-      if (isRemote(r) || isOnsite(r)) return false;  // remote & on-site never show in active/completed
-      return isActive ? !isDone(r) : isDone(r);
+      if (isRemoteView) return isRemote(r) && !isDone(r);   // active remote only
+      if (isOnsiteView) return isOnsite(r) && !isDone(r);   // active on-site only
+      if (!isActive) return isDone(r);                       // Completed = all done, any type
+      // In-Store (active): bench repairs only, not done
+      if (isRemote(r) || isOnsite(r)) return false;
+      return !isDone(r);
     });
     var q = state.search.toLowerCase();
     var rows = list.filter(function (r) {
@@ -1306,6 +1332,11 @@ window.RT_ageTier = function (iso) {
       if (state.sortKey === "name") {
         c = String(b.customerName || "").localeCompare(String(a.customerName || ""),
               undefined, { sensitivity: "base" });
+        if (c === 0) c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      } else if (state.sortKey === "jobType") {
+        var at = a.jobType || "Repair", bt = b.jobType || "Repair";
+        c = String(bt).localeCompare(String(at), undefined, { sensitivity: "base" });
+        // within the same type, newest checked-in first
         if (c === 0) c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
       } else {
         c = (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
@@ -1346,11 +1377,17 @@ window.RT_ageTier = function (iso) {
     var tw = el('<div class="tablewrap"></div>');
     var dateArrow = state.sortKey === "date" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
     var nameArrow = state.sortKey === "name" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
+    var typeArrow = state.sortKey === "jobType" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
+    var showTypeCol = (state.view === "completed");
+    var typeHdrHtml = showTypeCol
+      ? '<th class="sortable' + (state.sortKey === "jobType" ? " on" : "") + '" data-sorttype="1">Job type<span class="sarrow">' + typeArrow + "</span></th>"
+      : "";
     var table = el(
       "<table><thead><tr>" +
         '<th class="sortable' + (state.sortKey === "date" ? " on" : "") + '" data-sortdate="1">Checked in<span class="sarrow">' + dateArrow + "</span></th>" +
         '<th class="sortable' + (state.sortKey === "name" ? " on" : "") + '" data-sortname="1">Customer<span class="sarrow">' + nameArrow + "</span></th>" +
         "<th>Device</th><th>Problem</th>" +
+        typeHdrHtml +
         '<th>Status</th><th class="num">Est. cost</th><th class="ah">Actions</th>' +
       "</tr></thead><tbody></tbody></table>"
     );
@@ -1372,6 +1409,17 @@ window.RT_ageTier = function (iso) {
       }
       paintTable();
     });
+    var typeHdr = table.querySelector("[data-sorttype]");
+    if (typeHdr) {
+      typeHdr.addEventListener("click", function () {
+        if (state.sortKey === "jobType") {
+          state.dateSortDir = state.dateSortDir === "asc" ? "desc" : "asc";
+        } else {
+          state.sortKey = "jobType"; state.dateSortDir = "asc"; // A→Z by default
+        }
+        paintTable();
+      });
+    }
     var tbody = table.querySelector("tbody");
     rows.forEach(function (r) {
       var st = STATUS_STYLE[r.status] || STATUS_STYLE["Checked In"];
@@ -1393,6 +1441,7 @@ window.RT_ageTier = function (iso) {
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
           "<td><div>" + esc(r.jobType === "Remote Support" ? "Remote Support" : (r.jobType === "On-Site Service" ? "On-Site Service" : (r.device || "—"))) + '</div><div class="csub">' + esc(r.jobType === "Remote Support" ? (r.remoteRateType || "") : (r.jobType === "On-Site Service" ? "On-site visit" : r.brandModel)) + "</div></td>" +
           '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.jobType === "On-Site Service" ? (r.onsiteWork || "—") : (r.problem || "—"))) + "</td>" +
+          (showTypeCol ? '<td>' + esc(r.jobType || "Repair") + "</td>" : "") +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
             '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span></td>" +
           '<td class="num">' + (r.estimatedCost ? money(num(r.estimatedCost)) : "—") + "</td>" +
@@ -1426,7 +1475,7 @@ window.RT_ageTier = function (iso) {
             '<div class="rd-row"><span class="rd-l">Log a call / add a note</span>' +
               '<div class="rd-v"><textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
               '<button type="button" class="sd-callsave" data-callsave>Save note</button></div></div>';
-          detailRow = el('<tr class="detailrow"><td colspan="7"><div class="rd-wrap">' + cells + "</div></td></tr>");
+          detailRow = el('<tr class="detailrow"><td colspan="' + (showTypeCol ? 8 : 7) + '"><div class="rd-wrap">' + cells + "</div></td></tr>");
           tr.parentNode.insertBefore(detailRow, tr.nextSibling);
           // wire the call-note save box (same behavior as Linda's board)
           (function () {
@@ -2029,6 +2078,7 @@ window.RT_ageTier = function (iso) {
   var R = window.__RT;
   var state = R.mgmt.state;   // shared state lives in IIFE #2 (exported on __RT.mgmt); pie/admin checks need it here
   var SHOP = R.SHOP, STATUSES = R.STATUSES, CONTACT_PREF = R.CONTACT_PREF;
+  var statusesForJob = R.statusesForJob;
   var BACKUP_STATUS = R.BACKUP_STATUS, YESNO = R.YESNO, PAY_METHODS = R.PAY_METHODS, DOC_TYPES = R.DOC_TYPES, INTAKE_TYPES = R.INTAKE_TYPES;
   var JOB_TYPES = R.JOB_TYPES;
   var REMOTE_RATE_TYPES = R.REMOTE_RATE_TYPES, REMOTE_PAY = R.REMOTE_PAY;
@@ -2224,11 +2274,7 @@ window.RT_ageTier = function (iso) {
           '<div data-repair-only="1" style="flex:1 1 140px">' +
           fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
           '</div>' +
-          (M.canChangeStatus()
-            ? fld("Current status", sel("status", STATUSES, r.status))
-            : fld("Current status (managers & admins only)", '<select data-k="status" disabled>' + STATUSES.map(function (o) {
-                return '<option' + (o === r.status ? " selected" : "") + ">" + esc(o) + "</option>";
-              }).join("") + "</select>"))
+          '<div id="statusFieldWrap" style="flex:1 1 140px">' + statusField(r) + '</div>'
         ) +
         '<div data-repair-only="1">' +
         frow(
@@ -2611,10 +2657,22 @@ window.RT_ageTier = function (iso) {
       body.querySelectorAll(".sec[data-job]").forEach(function (sec) {
         sec.style.display = (sec.getAttribute("data-job") === jt) ? "" : "none";
       });
-      // repair-bench-only fields (diagnosis, estimate, Final-Receipt work) — Repair only
       body.querySelectorAll("[data-repair-only]").forEach(function (node) {
         node.style.display = (jt === "Repair") ? "" : "none";
       });
+      // rebuild the status dropdown for this job type, and auto-correct the
+      // stored status if it doesn't belong to the new type's workflow
+      var list = statusesForJob(jt);
+      if (list.indexOf(r.status) === -1) r.status = list[0];
+      var wrap = document.getElementById("statusFieldWrap");
+      if (wrap) {
+        wrap.innerHTML = statusField(r);
+        var newSel = wrap.querySelector('[data-k="status"]');
+        if (newSel) {
+          newSel.addEventListener("change", function () { r.status = newSel.value; });
+          newSel.addEventListener("input", function () { r.status = newSel.value; });
+        }
+      }
       var titleEl = document.getElementById("mtitle");
       if (titleEl) titleEl.textContent = jt;
     }
@@ -2648,6 +2706,24 @@ window.RT_ageTier = function (iso) {
   }
   function inp(k, v, ph) { return '<input data-k="' + k + '" value="' + esc(v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + ' />'; }
   function ta(k, v, rows) { return '<textarea data-k="' + k + '" rows="' + rows + '">' + esc(v) + "</textarea>"; }
+  // status dropdown whose options depend on the ticket's job type
+  function statusField(r) {
+    var list = statusesForJob(r.jobType);
+    var cur = r.status;
+    // if the stored status isn't valid for this job type, fall back to the first option
+    if (list.indexOf(cur) === -1) cur = list[0];
+    if (M.canChangeStatus()) {
+      return fld("Current status",
+        '<select data-k="status">' + list.map(function (o) {
+          return '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>";
+        }).join("") + "</select>");
+    }
+    return fld("Current status (managers & admins only)",
+      '<select data-k="status" disabled>' + list.map(function (o) {
+        return '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>";
+      }).join("") + "</select>");
+  }
+
   function sel(k, list, v) {
     return '<select data-k="' + k + '">' + list.map(function (o) {
       return '<option' + (o === v ? " selected" : "") + ">" + esc(o) + "</option>";
