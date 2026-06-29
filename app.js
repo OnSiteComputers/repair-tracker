@@ -1315,11 +1315,21 @@ window.RT_ageTier = function (iso) {
       return !isDone(r);
     });
     var q = state.search.toLowerCase();
+    var searching = q.length > 0;
+    var list = state.repairs.filter(function (r) {
+      if (searching) return true;                            // search reaches ALL jobs, every tab
+      if (isRemoteView) return isRemote(r) && !isDone(r);   // active remote only
+      if (isOnsiteView) return isOnsite(r) && !isDone(r);   // active on-site only
+      if (!isActive) return isDone(r);                       // Completed = all done, any type
+      // In-Store (active): bench repairs only, not done
+      if (isRemote(r) || isOnsite(r)) return false;
+      return !isDone(r);
+    });
     var rows = list.filter(function (r) {
       var ms = !q || [r.customerName, r.phone, r.cellPhone, r.device, r.brandModel, r.problem, r.remoteWork, r.onsiteWork]
         .join(" ").toLowerCase().indexOf(q) !== -1;
       var mf;
-      if (!isActive || state.statusFilter === "All") mf = true;
+      if (searching || !isActive || state.statusFilter === "All") mf = true;
       else if (state.statusFilter === "Active") mf = WORKING_STATES.indexOf(r.status) !== -1;
       else mf = r.status === state.statusFilter;
       return ms && mf;
@@ -1349,7 +1359,10 @@ window.RT_ageTier = function (iso) {
     if (rows.length === 0) {
       var hasAny = list.length > 0;
       var emptyTitle, emptySub;
-      if (isRemoteView) {
+      if (searching) {
+        emptyTitle = "No jobs match your search";
+        emptySub = "Searching across In-Store, Remote, On-Site, and Completed. Try a different term.";
+      } else if (isRemoteView) {
         emptyTitle = hasAny ? "No remote jobs match your search" : "No remote support jobs yet";
         emptySub = hasAny ? "Try a different search term." : "Set a ticket's Job Type to Remote Support to see it here.";
       } else if (isOnsiteView) {
@@ -1378,7 +1391,7 @@ window.RT_ageTier = function (iso) {
     var dateArrow = state.sortKey === "date" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
     var nameArrow = state.sortKey === "name" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
     var typeArrow = state.sortKey === "jobType" ? (state.dateSortDir === "asc" ? " ↑" : " ↓") : "";
-    var showTypeCol = (state.view === "completed");
+    var showTypeCol = (state.view === "completed") || searching;
     var typeHdrHtml = showTypeCol
       ? '<th class="sortable' + (state.sortKey === "jobType" ? " on" : "") + '" data-sorttype="1">Job type<span class="sarrow">' + typeArrow + "</span></th>"
       : "";
@@ -2615,7 +2628,17 @@ window.RT_ageTier = function (iso) {
     var right = el('<div class="fright"></div>');
     if (!isNew) {
       var docs = el('<div class="inlinedocs"></div>');
-      DOC_TYPES.forEach(function (d) {
+      // Admins see every document. Non-admins (counter staff) see only the one
+      // document appropriate to this job's type + stage — fewer options, fewer
+      // mistakes. Each is a single large button (no dropdown).
+      var allowed;
+      if (state.isAdmin) {
+        allowed = DOC_TYPES.slice();
+      } else {
+        allowed = allowedDocsFor(r);
+        docs.classList.add("inlinedocs-big");
+      }
+      allowed.forEach(function (d) {
         var b = el('<button class="btn btn-gho btn-sm">' + esc(d) + "</button>");
         b.addEventListener("click", function () { openDoc(r, d); });
         docs.appendChild(b);
@@ -2774,6 +2797,23 @@ window.RT_ageTier = function (iso) {
   }
 
   // ---------------- Document generator ----------------
+  // Which documents a NON-admin (counter staff) may print, by job type + stage.
+  // Keeps the counter person from picking the wrong document. Admins bypass this.
+  function allowedDocsFor(r) {
+    var jt = r.jobType || "Repair";
+    if (jt === "Remote Support") return ["Remote Support Receipt"];
+    if (jt === "On-Site Service") return ["On-Site Service Receipt"];
+    // Repair flow, by status
+    switch (r.status) {
+      case "Checked In":       return ["Service Order", "Label"];
+      case "Diagnosed":        return ["Diagnostic Receipt"];
+      case "Ready for Pickup": return ["Final Receipt"];
+      case "Picked Up":        return ["Final Receipt"];
+      // Diagnosing, Waiting on Parts, In Repair → nothing to print
+      default:                 return [];
+    }
+  }
+
   function openDoc(r, type) {
     seedDropdownDefaults(r);
     var overlay = el('<div class="overlay"></div>');
