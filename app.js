@@ -226,6 +226,7 @@ window.RT_ageTier = function (iso) {
     estCompletion: "est_completion",
     trackerNotes: "tracker_notes",
     callNotes: "call_notes",
+    customerNotifiedAt: "customer_notified_at",
     lastEditedBy: "last_edited_by",
     lastEditedAt: "last_edited_at",
     diagnosticFindings: "diagnostic_findings",
@@ -326,6 +327,25 @@ window.RT_ageTier = function (iso) {
     if (n <= 5) return "green";
     if (n <= 10) return "yellow";
     return "red";
+  }
+  // Days since the customer was notified of the diagnosis. Input is a full
+  // timestamp (customer_notified_at). Returns 0 if never notified.
+  function daysSinceNotified(ts) {
+    if (!ts) return 0;
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return 0;
+    var then = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var diff = Math.floor((today - then) / 86400000);
+    return diff < 0 ? 0 : diff;
+  }
+  // Color tier for the notified badge: amber at 7 days, red at 14.
+  function notifyTier(ts) {
+    var n = daysSinceNotified(ts);
+    if (n >= 14) return "red";
+    if (n >= 7) return "yellow";
+    return "green";
   }
   // Turn an email into a short display name: text before the @, first letter capitalized.
   // greg@onsitecomputerservice.net -> "Greg"
@@ -506,8 +526,22 @@ window.RT_ageTier = function (iso) {
     num: num, money: money, fmtDate: fmtDate, computeTotals: computeTotals, computeRemote: computeRemote, computeOnsite: computeOnsite,
     PARTS_MATRIX: PARTS_MATRIX, matrixPartPrice: matrixPartPrice, partsBilled: partsBilled, roundUpTo99: roundUpTo99,
     daysSince: daysSince, ageTier: ageTier, userDisplayName: userDisplayName,
+    daysSinceNotified: daysSinceNotified, notifyTier: notifyTier,
     esc: esc, el: el, doctorMarkSVG: doctorMarkSVG, eyeSVG: eyeSVG, logoImg: logoImg,
     CFG: CFG, configOK: configOK, sb: sb, app: app, IS_STATUS: IS_STATUS,
+  };
+
+  // True when the user is actively typing in a text field (textarea/input/
+  // contenteditable). Auto-refresh checks this so a background repaint never
+  // wipes out an in-progress note. Multi-user safe: this only looks at THIS
+  // browser's focus, so it never blocks anyone else's refresh.
+  window.__RT.isEditing = function () {
+    var a = document.activeElement;
+    if (!a) return false;
+    var tag = (a.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || tag === "select") return true;
+    if (a.isContentEditable) return true;
+    return false;
   };
 })();
 /* ===================== Management app + Status page ===================== */
@@ -1128,7 +1162,11 @@ window.RT_ageTier = function (iso) {
     }
 
     function refresh() {
+      // Don't yank the list out from under someone mid-note. If a text field
+      // is focused, skip this cycle; the next poll (or the blur) will catch up.
+      if (window.__RT.isEditing()) return;
       loadRepairs().then(function () {
+        if (window.__RT.isEditing()) return;
         var now = new Date();
         updated.textContent = "Updated " + now.toLocaleTimeString("en-US",
           { hour: "numeric", minute: "2-digit" });
@@ -1456,7 +1494,11 @@ window.RT_ageTier = function (iso) {
           '<td class="prob">' + esc(r.jobType === "Remote Support" ? (r.remoteWork || "—") : (r.jobType === "On-Site Service" ? (r.onsiteWork || "—") : (r.problem || "—"))) + "</td>" +
           (showTypeCol ? '<td>' + esc(r.jobType || "Repair") + "</td>" : "") +
           '<td><span class="badge" style="background:' + st.bg + ";color:" + st.fg + '">' +
-            '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span></td>" +
+            '<span class="dot" style="background:' + st.dot + '"></span>' + esc(r.status) + "</span>" +
+            (r.status === "Diagnosed" && r.customerNotifiedAt
+              ? ' <span class="notif-badge notif-' + R.notifyTier(r.customerNotifiedAt) + '" title="Customer notified ' +
+                R.daysSinceNotified(r.customerNotifiedAt) + ' day(s) ago">' + R.daysSinceNotified(r.customerNotifiedAt) + "d</span>"
+              : "") + "</td>" +
           '<td class="num">' + (r.estimatedCost ? money(num(r.estimatedCost)) : "—") + "</td>" +
           '<td class="acts"></td>' +
         "</tr>"
@@ -1485,6 +1527,16 @@ window.RT_ageTier = function (iso) {
             (r.lastEditedBy && r.lastEditedBy.trim()
               ? '<div class="rd-row"><span class="rd-l">Last edited by</span><div class="rd-v">' + esc(r.lastEditedBy) +
                 (r.lastEditedAt ? " · " + esc(fmtDate(r.lastEditedAt)) : "") + "</div></div>" : "") +
+            (r.status === "Diagnosed"
+              ? '<div class="rd-row"><span class="rd-l">Customer notified</span><div class="rd-v">' +
+                  (r.customerNotifiedAt
+                    ? '<span class="notif-badge notif-' + R.notifyTier(r.customerNotifiedAt) + '">' +
+                      R.daysSinceNotified(r.customerNotifiedAt) + " day(s) ago</span> " +
+                      '<span class="csub">on ' + esc(fmtDate(r.customerNotifiedAt)) + "</span> " +
+                      '<button type="button" class="sd-callsave" data-clearnotif>Clear</button>'
+                    : '<button type="button" class="sd-callsave" data-marknotif>Mark customer notified</button>') +
+                "</div></div>"
+              : "") +
             '<div class="rd-row"><span class="rd-l">Log a call / add a note</span>' +
               '<div class="rd-v"><textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
               '<button type="button" class="sd-callsave" data-callsave>Save note</button></div></div>';
@@ -1518,11 +1570,41 @@ window.RT_ageTier = function (iso) {
               });
             });
           })();
+          // wire the "Mark customer notified" / "Clear" buttons
+          (function () {
+            var markBtn = detailRow.querySelector("[data-marknotif]");
+            var clearBtn = detailRow.querySelector("[data-clearnotif]");
+            var M = window.__RT.mgmt;
+            if (markBtn) {
+              markBtn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                markBtn.disabled = true; markBtn.textContent = "Saving…";
+                var ts = new Date().toISOString();
+                M.saveRepair({ id: r.id, customerNotifiedAt: ts }).then(function () {
+                  r.customerNotifiedAt = ts;
+                  loadAndRender();
+                }).catch(function (e2) {
+                  markBtn.disabled = false; markBtn.textContent = "Mark customer notified";
+                  console.error("mark notified:", e2);
+                });
+              });
+            }
+            if (clearBtn) {
+              clearBtn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                clearBtn.disabled = true; clearBtn.textContent = "…";
+                M.saveRepair({ id: r.id, customerNotifiedAt: "" }).then(function () {
+                  r.customerNotifiedAt = "";
+                  loadAndRender();
+                }).catch(function (e2) {
+                  clearBtn.disabled = false; clearBtn.textContent = "Clear";
+                  console.error("clear notified:", e2);
+                });
+              });
+            }
+          })();
         });
       }
-
-      // doc menu
-      acts.appendChild(buildDocMenu(r));
       // change-history button — fully self-contained so it can't depend on
       // cross-IIFE wiring. Queries Supabase directly and shows any error inline.
       if (r.id) {
@@ -2000,9 +2082,9 @@ window.RT_ageTier = function (iso) {
       try {
         sb.channel("repairs-mgmt")
           .on("postgres_changes", { event: "*", schema: "public", table: "repairs" }, function () {
-            if (state.onAdminPage) return;
+            if (state.onAdminPage || window.__RT.isEditing()) return;
             loadRepairs().then(function () {
-              if (!document.querySelector(".overlay") && !state.onAdminPage) renderApp();
+              if (!document.querySelector(".overlay") && !state.onAdminPage && !window.__RT.isEditing()) renderApp();
             });
           })
           .on("postgres_changes", { event: "*", schema: "public", table: "list_options" }, function () {
@@ -2014,9 +2096,9 @@ window.RT_ageTier = function (iso) {
       // Skipped while a modal is open OR the admin page is showing, so it never
       // yanks the form or the Manage Users screen out from under you.
       setInterval(function () {
-        if (document.querySelector(".overlay") || state.onAdminPage) return;
+        if (document.querySelector(".overlay") || state.onAdminPage || window.__RT.isEditing()) return;
         loadRepairs().then(function () {
-          if (!document.querySelector(".overlay") && !state.onAdminPage) renderApp();
+          if (!document.querySelector(".overlay") && !state.onAdminPage && !window.__RT.isEditing()) renderApp();
         }).catch(function () {});
       }, 60000);
     }).catch(function (e) {
@@ -3296,8 +3378,9 @@ window.RT_ageTier = function (iso) {
         '<div class="dterm-h">TERMS &amp; CONDITIONS</div>' +
         '<ul class="dterm">' +
           "<li>A $" + SHOP.diagFee + ".00 diagnostic fee is required and must be paid prior to device pickup if repair is declined. This fee will be waived if " + esc(SHOP.name) + " performs the repair.</li>" +
-          "<li>Devices not picked up within 15 days after notification that services are complete are subject to a $10/day storage fee, in addition to all other charges.</li>" +
-          "<li>Devices not picked up within 30 days after notification, and without payment of all monies due (including storage fees), will be considered abandoned property and become the property of " + esc(SHOP.name) + ".</li>" +
+          "<li>Devices not picked up within 15 days after notification &mdash; whether notification of the diagnostic findings and repair estimate, or notification that repairs are complete &mdash; are subject to a $10/day storage fee, in addition to all other charges.</li>" +
+          "<li>If the customer declines or fails to authorize the recommended repair, the diagnostic fee becomes due immediately and the device must be picked up within 15 days of notification of the diagnostic findings.</li>" +
+          "<li>Devices not picked up within 30 days after any such notification, and without payment of all monies due (including storage fees), will be considered abandoned property and become the property of " + esc(SHOP.name) + ".</li>" +
           "<li>" + esc(SHOP.name) + " is not responsible for data loss. Customers are responsible for backing up all data prior to service.</li>" +
           "<li>I authorize " + esc(SHOP.name) + " to perform diagnostic and repair work on the above listed device.</li>" +
           "<li class=\"strong\">I have read and agree to the above terms.</li>" +
