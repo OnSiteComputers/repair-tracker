@@ -39,7 +39,7 @@ window.RT_ageTier = function (iso) {
     phone: "980-236-0810",
     web: "www.onsitecomputerservice.net",
     tagline: "Your Computer's Doctor",
-    diagFee: 129,
+    diagFee: 129.99,
     apptFee: 25,
     taxRate: 0.07,
     partsMarkup: 35,   // default % markup on parts cost; editable per ticket
@@ -3377,7 +3377,7 @@ window.RT_ageTier = function (iso) {
       charges =
         '<div class="dterm-h">TERMS &amp; CONDITIONS</div>' +
         '<ul class="dterm">' +
-          "<li>A $" + SHOP.diagFee + ".00 diagnostic fee is required and must be paid prior to device pickup if repair is declined. This fee will be waived if " + esc(SHOP.name) + " performs the repair.</li>" +
+          "<li>A " + money(SHOP.diagFee) + " diagnostic fee is paid at drop-off. If you authorize the recommended repair, this fee is credited toward your total repair cost. If you decline to have " + esc(SHOP.name) + " perform the repair, the diagnostic fee is non-refundable and the device may be picked up at no additional charge.</li>" +
           "<li>Devices not picked up within 15 days after notification &mdash; whether notification of the diagnostic findings and repair estimate, or notification that repairs are complete &mdash; are subject to a $10/day storage fee, in addition to all other charges.</li>" +
           "<li>If the customer declines or fails to authorize the recommended repair, the diagnostic fee becomes due immediately and the device must be picked up within 15 days of notification of the diagnostic findings.</li>" +
           "<li>Devices not picked up within 30 days after any such notification, and without payment of all monies due (including storage fees), will be considered abandoned property and become the property of " + esc(SHOP.name) + ".</li>" +
@@ -3386,7 +3386,7 @@ window.RT_ageTier = function (iso) {
           "<li class=\"strong\">I have read and agree to the above terms.</li>" +
         "</ul>" +
         '<div class="dstrip">Diagnostic Fee: ' + money(SHOP.diagFee) + "  +  7% Sales Tax: " + money(soTax) +
-          "  =  TOTAL: " + money(SHOP.diagFee + soTax) + "</div>" +
+          "  =  PAID AT DROP-OFF: " + money(SHOP.diagFee + soTax) + "</div>" +
         sign;
     } else if (type === "Diagnostic Receipt") {
       var dTax = tax7(SHOP.diagFee);
@@ -3412,8 +3412,8 @@ window.RT_ageTier = function (iso) {
           '<tr><td>Sales Tax (7%)</td><td class="amt">' + money(estTax) + "</td></tr>" +
         "</tbody></table>" +
         '<div class="dstrip">ESTIMATED TOTAL: ' + money(estTotal) + "</div>" +
-        '<div class="dnote">This quote is valid for 30 days. The $' + SHOP.diagFee +
-          ".00 diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>";
+        '<div class="dnote">This quote is valid for 30 days. The ' + money(SHOP.diagFee) +
+          " diagnostic fee is credited toward the quote when " + esc(SHOP.name) + " performs the work.</div>";
     }
 
     // Footer — review QR now lives in the header; footers just thank
