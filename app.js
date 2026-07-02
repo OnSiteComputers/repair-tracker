@@ -31,6 +31,10 @@ window.RT_ageTier = function (iso) {
 (function () {
   "use strict";
 
+  // Build stamp — check the browser console. If you don't see this exact line,
+  // the browser/Cloudflare is serving a CACHED old app.js and the fix isn't live.
+  try { console.log("RepairTracker build: 2026-07-02 margin-fix v3 ✅"); } catch (e) {}
+
   // ---------- Shop info ----------
   var SHOP = {
     name: "On-Site Computer Service",
@@ -1745,7 +1749,7 @@ window.RT_ageTier = function (iso) {
         var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
         mbtn.addEventListener("click", function (ev) {
           ev.stopPropagation();
-          openMarginPopup(r);
+          window.__RT.openMarginPopup(r);
         });
         acts.appendChild(mbtn);
       }
@@ -1815,6 +1819,7 @@ window.RT_ageTier = function (iso) {
     deleteRepair: deleteRepair, renderApp: renderApp, clearSearchAndFilter: clearSearchAndFilter,
     loadListOptions: loadListOptions, rememberFromRecord: rememberFromRecord, forgetOption: forgetOption,
     isAdmin: function () { return state.isAdmin; },
+    isAdminNow: isAdminNow,
     currentUser: function () { return state.currentUser; },
     loadAuditLog: loadAuditLog,
     role: function () { return state.role; },
@@ -2758,7 +2763,7 @@ window.RT_ageTier = function (iso) {
         rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
       }
       rows += trow("Total due", money(t.finalDue), true);
-      if (isAdminNow()) {
+      if (M.isAdminNow()) {
         rows += marginPie([
           { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
@@ -2792,7 +2797,7 @@ window.RT_ageTier = function (iso) {
         trow("Subtotal", money(os.subtotal)) +
         trow("Sales tax (7%)", money(os.tax)) +
         trow("On-site total", money(os.total), true);
-      if (isAdminNow()) {
+      if (M.isAdminNow()) {
         rows += marginPie([
           { label: "Parts cost", value: os.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: os.partsMargin, color: "#C8A85A" },
@@ -2996,7 +3001,7 @@ window.RT_ageTier = function (iso) {
   // Reuses computeTotals/computeRemote/computeOnsite + marginPie so the math and
   // the donut never drift from the form. Closes on outside click (unlike the form).
   function openMarginPopup(r) {
-    if (!isAdminNow()) return; // hard gate — non-admins can't open it at all
+    if (!M.isAdminNow()) return; // hard gate — non-admins can't open it at all
     var jt = r.jobType || "Repair";
     var rows = "", pie = "";
     if (jt === "Remote Support") {
@@ -3063,6 +3068,9 @@ window.RT_ageTier = function (iso) {
     document.addEventListener("keydown", onEsc);
     document.body.appendChild(overlay);
   }
+  // Bridge it out — the row's 💰 button lives in a different IIFE and calls this
+  // via window.__RT.openMarginPopup(r).
+  window.__RT.openMarginPopup = openMarginPopup;
 
   // ---------------- Document generator ----------------
   // Which documents a NON-admin (counter staff) may print, by job type + stage.
