@@ -33,7 +33,7 @@ window.RT_ageTier = function (iso) {
 
   // Build stamp — check the browser console. If you don't see this exact line,
   // the browser/Cloudflare is serving a CACHED old app.js and the fix isn't live.
-  try { console.log("RepairTracker build: 2026-07-02 margin-fix v3 ✅"); } catch (e) {}
+  try { console.log("RepairTracker build: 2026-07-02 margin-fix v6 ✅"); } catch (e) {}
 
   // ---------- Shop info ----------
   var SHOP = {
@@ -1240,7 +1240,7 @@ window.RT_ageTier = function (iso) {
           '<button class="tab" data-v="remote">Remote Support <span class="ct">' + remote.length + "</span></button>" +
           '<button class="tab" data-v="onsite">On-Site Service <span class="ct">' + onsite.length + "</span></button>" +
           '<button class="tab" data-v="completed">Completed <span class="ct">' + completed.length + "</span></button>" +
-          (state.isAdmin ? '<button class="tab tab-admin" data-admin="1" title="Manage users">Manage users</button>' : "") +
+          (isAdminNow() ? '<button class="tab tab-admin" data-admin="1" title="Manage users">Manage users</button>' : "") +
           '<button class="tab" data-signout="1" title="Sign out">Sign out</button>' +
         "</nav>" +
       "</header>"
@@ -1743,9 +1743,11 @@ window.RT_ageTier = function (iso) {
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
       }
-      // Admin-only: quick job-margin popup (cost/profit breakdown). Hidden from
-      // everyone except admins; opens a popup that closes on an outside click.
-      if (isAdminNow() && r.id) {
+      // Admin-only: quick job-margin popup (cost/profit breakdown). Shown only
+      // on the stages where costs are being entered / finalized — Diagnosed,
+      // In Repair, and Ready for Pickup. Hidden from everyone except admins.
+      var showMargin = (r.status === "Diagnosed" || r.status === "In Repair" || r.status === "Ready for Pickup");
+      if (isAdminNow() && r.id && showMargin) {
         var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
         mbtn.addEventListener("click", function (ev) {
           ev.stopPropagation();
@@ -1823,7 +1825,7 @@ window.RT_ageTier = function (iso) {
     currentUser: function () { return state.currentUser; },
     loadAuditLog: loadAuditLog,
     role: function () { return state.role; },
-    canChangeStatus: function () { return state.role === "admin" || state.role === "manager"; },
+    canChangeStatus: function () { return isAdminNow() || state.role === "admin" || state.role === "manager"; },
     listUserRoles: listUserRoles,
     setUserRole: setUserRole,
     removeUserRole: removeUserRole,
@@ -2244,7 +2246,7 @@ window.RT_ageTier = function (iso) {
     loadRole(session).then(function () {
       // Admin requesting the user-management screen
       var params = new URLSearchParams(window.location.search);
-      if (state.isAdmin && params.get("view") === "admin") {
+      if (isAdminNow() && params.get("view") === "admin") {
         renderAdminPage();
         return;
       }
@@ -3034,22 +3036,29 @@ window.RT_ageTier = function (iso) {
       ], "Total", os.total, { label: "Job margin", value: os.jobMargin });
     } else {
       var t = computeTotals(r);
-      rows =
-        trow("Parts cost", money(t.parts)) +
-        trow("Parts billed (+" + t.markupPct + "%" + (t.markupSource === "override" ? " override" : "") + ")", money(t.markedParts)) +
-        trow("Labor", money(t.labor));
-      if (t.expedite > 0) rows += trow("Expedite fee", money(t.expedite));
-      rows +=
-        trow("Subtotal", money(t.plSubtotal)) +
-        trow("Sales tax (7%)", money(t.plTax)) +
-        trow("Total due", money(t.finalDue), true);
-      pie = marginPie([
-        { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
-        { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
-        { label: "Labor", value: t.labor, color: "#1A2E5A" },
-        { label: "Expedite", value: t.expedite, color: "#E07B39" },
-        { label: "Sales tax", value: t.plTax, color: "#7A8CA3" },
-      ], "Total", t.plWithTax, { label: "Job margin", value: t.jobMargin });
+      // Nothing costed yet (no parts, no labor) — a zero donut is confusing, so
+      // show a plain message instead. Common on In Repair tickets before pricing.
+      if (t.plWithTax <= 0) {
+        rows = '<div class="mp-empty">No parts cost or labor entered on this ticket yet, so there\'s no margin to chart.<br><br>Add parts and/or labor in the ticket, then reopen this.</div>';
+        pie = "";
+      } else {
+        rows =
+          trow("Parts cost", money(t.parts)) +
+          trow("Parts billed (+" + t.markupPct + "%" + (t.markupSource === "override" ? " override" : "") + ")", money(t.markedParts)) +
+          trow("Labor", money(t.labor));
+        if (t.expedite > 0) rows += trow("Expedite fee", money(t.expedite));
+        rows +=
+          trow("Subtotal", money(t.plSubtotal)) +
+          trow("Sales tax (7%)", money(t.plTax)) +
+          trow("Total due", money(t.finalDue), true);
+        pie = marginPie([
+          { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
+          { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
+          { label: "Labor", value: t.labor, color: "#1A2E5A" },
+          { label: "Expedite", value: t.expedite, color: "#E07B39" },
+          { label: "Sales tax", value: t.plTax, color: "#7A8CA3" },
+        ], "Total", t.plWithTax, { label: "Job margin", value: t.jobMargin });
+      }
     }
 
     var overlay = el('<div class="overlay"></div>');
