@@ -33,7 +33,7 @@ window.RT_ageTier = function (iso) {
 
   // Build stamp — check the browser console. If you don't see this exact line,
   // the browser/Cloudflare is serving a CACHED old app.js and the fix isn't live.
-  try { console.log("RepairTracker build: 2026-07-02 status-row v7 ✅"); } catch (e) {}
+  try { console.log("RepairTracker build: 2026-07-02 linda-margin v9 ✅"); } catch (e) {}
 
   // ---------- Shop info ----------
   var SHOP = {
@@ -607,6 +607,16 @@ window.RT_ageTier = function (iso) {
     if (state.isAdmin) return true;
     var email = (state.currentUser || "").toLowerCase();
     return ADMIN_EMAILS.indexOf(email) !== -1;
+  }
+  // Who may see profit/margin (the 💰 button + the in-form donut). Admins always
+  // can; plus these specific people regardless of their role. This is separate
+  // from admin rights — being on this list does NOT grant user-management, etc.
+  // Per-customer clone: swap these to the owner(s) who should see margins.
+  var MARGIN_EMAILS = ["greg@onsitecomputerservice.net", "linda@onsitecomputerservice.net"];
+  function canSeeMargin() {
+    if (isAdminNow()) return true;
+    var email = (state.currentUser || "").toLowerCase();
+    return MARGIN_EMAILS.indexOf(email) !== -1;
   }
   function fallbackRole(email) {
     if (ADMIN_EMAILS.indexOf(email) !== -1) return "admin";
@@ -1747,7 +1757,7 @@ window.RT_ageTier = function (iso) {
       // on the stages where costs are being entered / finalized — Diagnosed,
       // In Repair, and Ready for Pickup. Hidden from everyone except admins.
       var showMargin = (r.status === "Diagnosed" || r.status === "In Repair" || r.status === "Ready for Pickup");
-      if (isAdminNow() && r.id && showMargin) {
+      if (canSeeMargin() && r.id && showMargin) {
         var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
         mbtn.addEventListener("click", function (ev) {
           ev.stopPropagation();
@@ -1822,6 +1832,7 @@ window.RT_ageTier = function (iso) {
     loadListOptions: loadListOptions, rememberFromRecord: rememberFromRecord, forgetOption: forgetOption,
     isAdmin: function () { return state.isAdmin; },
     isAdminNow: isAdminNow,
+    canSeeMargin: canSeeMargin,
     currentUser: function () { return state.currentUser; },
     loadAuditLog: loadAuditLog,
     role: function () { return state.role; },
@@ -2441,7 +2452,10 @@ window.RT_ageTier = function (iso) {
     var body = el('<div class="mbody"></div>');
     body.innerHTML =
       section("Job Type",
-        frow(fld("This ticket is a", sel("jobType", JOB_TYPES, r.jobType || "Repair")))
+        frow(fld("This ticket is a", sel("jobType", JOB_TYPES, r.jobType || "Repair"))) +
+        // Status right at the top — it's the field people most often open a
+        // ticket to change, so it shouldn't be buried further down the form.
+        '<div id="statusFieldWrap">' + frow(statusField(r)) + '</div>'
       ) +
       section("Customer",
         frow(
@@ -2479,10 +2493,6 @@ window.RT_ageTier = function (iso) {
       , "Repair") +
       section("Problem & status",
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
-        // Status on its own full-width row so it always renders, for every job
-        // type — it used to share a flex row with the repair-only Intake field,
-        // which could collapse/clip it when that field was hidden.
-        '<div id="statusFieldWrap">' + frow(statusField(r)) + '</div>' +
         '<div data-repair-only="1">' +
         frow(fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>")) +
         '</div>' +
@@ -2766,7 +2776,7 @@ window.RT_ageTier = function (iso) {
         rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
       }
       rows += trow("Total due", money(t.finalDue), true);
-      if (M.isAdminNow()) {
+      if (M.canSeeMargin()) {
         rows += marginPie([
           { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
@@ -2800,7 +2810,7 @@ window.RT_ageTier = function (iso) {
         trow("Subtotal", money(os.subtotal)) +
         trow("Sales tax (7%)", money(os.tax)) +
         trow("On-site total", money(os.total), true);
-      if (M.isAdminNow()) {
+      if (M.canSeeMargin()) {
         rows += marginPie([
           { label: "Parts cost", value: os.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: os.partsMargin, color: "#C8A85A" },
@@ -3004,7 +3014,7 @@ window.RT_ageTier = function (iso) {
   // Reuses computeTotals/computeRemote/computeOnsite + marginPie so the math and
   // the donut never drift from the form. Closes on outside click (unlike the form).
   function openMarginPopup(r) {
-    if (!M.isAdminNow()) return; // hard gate — non-admins can't open it at all
+    if (!M.canSeeMargin()) return; // hard gate — only admins + the margin-email list
     var jt = r.jobType || "Repair";
     var rows = "", pie = "";
     if (jt === "Remote Support") {
