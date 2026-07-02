@@ -596,6 +596,14 @@ window.RT_ageTier = function (iso) {
     state.isAdmin = (role === "admin");
     state.readonly = (role === "read-only");
   }
+  // Reliable admin check for showing the margin/profit UI. Trusts the resolved
+  // role OR the known admin email list, so a slow/failed user_roles lookup can
+  // never hide the owner's margin donut + button.
+  function isAdminNow() {
+    if (state.isAdmin) return true;
+    var email = (state.currentUser || "").toLowerCase();
+    return ADMIN_EMAILS.indexOf(email) !== -1;
+  }
   function fallbackRole(email) {
     if (ADMIN_EMAILS.indexOf(email) !== -1) return "admin";
     if (READONLY_EMAILS.indexOf(email) !== -1) return "read-only";
@@ -1733,7 +1741,7 @@ window.RT_ageTier = function (iso) {
       }
       // Admin-only: quick job-margin popup (cost/profit breakdown). Hidden from
       // everyone except admins; opens a popup that closes on an outside click.
-      if (state.isAdmin && r.id) {
+      if (isAdminNow() && r.id) {
         var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
         mbtn.addEventListener("click", function (ev) {
           ev.stopPropagation();
@@ -2750,7 +2758,7 @@ window.RT_ageTier = function (iso) {
         rows += trow("Less diagnostic fee paid", "−" + money(t.diagCredit));
       }
       rows += trow("Total due", money(t.finalDue), true);
-      if (state.isAdmin) {
+      if (isAdminNow()) {
         rows += marginPie([
           { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
@@ -2784,7 +2792,7 @@ window.RT_ageTier = function (iso) {
         trow("Subtotal", money(os.subtotal)) +
         trow("Sales tax (7%)", money(os.tax)) +
         trow("On-site total", money(os.total), true);
-      if (state.isAdmin) {
+      if (isAdminNow()) {
         rows += marginPie([
           { label: "Parts cost", value: os.parts, color: "#9aa0a6" },
           { label: "Parts margin", value: os.partsMargin, color: "#C8A85A" },
@@ -2988,7 +2996,7 @@ window.RT_ageTier = function (iso) {
   // Reuses computeTotals/computeRemote/computeOnsite + marginPie so the math and
   // the donut never drift from the form. Closes on outside click (unlike the form).
   function openMarginPopup(r) {
-    if (!state.isAdmin) return; // hard gate — non-admins can't open it at all
+    if (!isAdminNow()) return; // hard gate — non-admins can't open it at all
     var jt = r.jobType || "Repair";
     var rows = "", pie = "";
     if (jt === "Remote Support") {
