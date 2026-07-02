@@ -234,9 +234,9 @@ window.RT_ageTier = function (iso) {
     diagnosticFeePaid: "diagnostic_fee_paid",
     remoteHours: "remote_hours",
     remoteRateType: "remote_rate_type",
+    scheduledAt: "scheduled_at",
     remoteWork: "remote_work",
     remotePayMethod: "remote_pay_method",
-    scheduledAt: "scheduled_at",
     onsiteTripCharge: "onsite_trip_charge",
     itemizeTrip: "itemize_trip",
     onsiteHours: "onsite_hours",
@@ -310,23 +310,6 @@ window.RT_ageTier = function (iso) {
     var p = String(iso).slice(0, 10).split("-");
     if (p.length !== 3) return iso;
     return p[1] + "/" + p[2] + "/" + p[0];
-  }
-  // Format a stored datetime ("YYYY-MM-DDTHH:MM" or a longer ISO string) as
-  // "M/D/YYYY at h:MM AM/PM". Parsed by hand (no new Date()) so the wall-clock
-  // time the user picked is shown exactly, with no timezone shifting.
-  function fmtDateTime(iso) {
-    if (!iso) return "—";
-    var s = String(iso);
-    var datePart = s.slice(0, 10).split("-");
-    if (datePart.length !== 3) return iso;
-    var dateStr = datePart[1] + "/" + datePart[2] + "/" + datePart[0];
-    var timePart = s.slice(11, 16); // "HH:MM"
-    if (!/^\d{2}:\d{2}$/.test(timePart)) return dateStr;
-    var hh = parseInt(timePart.slice(0, 2), 10);
-    var mm = timePart.slice(3, 5);
-    var ampm = hh >= 12 ? "PM" : "AM";
-    var h12 = hh % 12; if (h12 === 0) h12 = 12;
-    return dateStr + " at " + h12 + ":" + mm + " " + ampm;
   }
   // Days since check-in, and the color tier:
   // green = 1–5 days, yellow = 6–10, red = over 10.
@@ -661,7 +644,6 @@ window.RT_ageTier = function (iso) {
     intakeType: "Intake type", dateCheckedIn: "Date checked in", dateCompleted: "Date completed",
     remoteHours: "Remote hours", remoteRateType: "Remote rate", remoteWork: "Remote work",
     remotePayMethod: "Remote paid by", onsiteTripCharge: "On-site trip charge",
-    scheduledAt: "Scheduled date/time",
     onsiteHours: "On-site hours", onsiteWork: "On-site work",
     trackerNotes: "Notes", callNotes: "Call notes",
   };
@@ -1541,7 +1523,7 @@ window.RT_ageTier = function (iso) {
             (r.estCompletion && String(r.estCompletion).trim()
               ? '<div class="rd-row"><span class="rd-l">Est. completion</span><div class="rd-v">' + esc(fmtDate(r.estCompletion)) + "</div></div>" : "") +
             (r.scheduledAt && String(r.scheduledAt).trim()
-              ? '<div class="rd-row"><span class="rd-l">Scheduled</span><div class="rd-v">' + esc(fmtDateTime(r.scheduledAt)) + "</div></div>" : "") +
+              ? '<div class="rd-row"><span class="rd-l">Scheduled</span><div class="rd-v">' + esc(fmtDate(r.scheduledAt)) + "</div></div>" : "") +
             (r.trackerNotes && r.trackerNotes.trim()
               ? '<div class="rd-row"><span class="rd-l">Notes</span><div class="rd-v">' + esc(r.trackerNotes) + "</div></div>" : "") +
             (r.callNotes && r.callNotes.trim()
@@ -1558,7 +1540,8 @@ window.RT_ageTier = function (iso) {
                       '<button type="button" class="sd-callsave" data-clearnotif>Clear</button>'
                     : '<button type="button" class="sd-callsave" data-marknotif>Mark customer notified</button>') +
                 "</div></div>"
-              : "");
+              : "") +
+            "";
           detailRow = el('<tr class="detailrow"><td colspan="' + (showTypeCol ? 8 : 7) + '"><div class="rd-wrap">' + cells + "</div></td></tr>");
           tr.parentNode.insertBefore(detailRow, tr.nextSibling);
           // wire the "Mark customer notified" / "Clear" buttons
@@ -2184,12 +2167,7 @@ window.RT_ageTier = function (iso) {
   function dateInp(k, v) {
     return '<input type="date" data-k="' + k + '" value="' + esc(v) + '" />';
   }
-
-  // datetime-local input. The DB stores an ISO/timestamptz string; the HTML
-  // datetime-local control needs "YYYY-MM-DDTHH:MM" (no seconds, no zone), so
-  // trim whatever's stored down to the first 16 chars for display. On save the
-  // browser hands back exactly that 16-char local string, which Supabase
-  // accepts into a timestamptz column.
+  // datetime-local wants "YYYY-MM-DDTHH:MM"; strip seconds/zone from an ISO value.
   function dtLocalInp(k, v) {
     var val = v ? String(v).slice(0, 16) : "";
     return '<input type="datetime-local" data-k="' + k + '" value="' + esc(val) + '" />';
@@ -2414,7 +2392,9 @@ window.RT_ageTier = function (iso) {
         '<div class="totals" id="totalsBox"></div>'
       , "Repair") +
       section("Remote Support (separate receipt)",
-        frow(fld("Scheduled date &amp; time (notifies Greg when set or changed)", dtLocalInp("scheduledAt", r.scheduledAt), "full")) +
+        frow(
+          fld("Scheduled date & time" + (r.scheduledAt ? " — set: " + esc(fmtDate(r.scheduledAt)) : " (not scheduled yet)"), dtLocalInp("scheduledAt", r.scheduledAt), "full")
+        ) +
         frow(
           fld("Remote hours", inp("remoteHours", r.remoteHours)) +
           fld("Rate", sel("remoteRateType", REMOTE_RATE_TYPES, r.remoteRateType)) +
@@ -2424,7 +2404,9 @@ window.RT_ageTier = function (iso) {
         '<div class="totals" id="remoteTotalsBox"></div>'
       , "Remote Support") +
       section("On-Site Service (separate receipt)",
-        frow(fld("Scheduled date &amp; time (notifies Greg when set or changed)", dtLocalInp("scheduledAt", r.scheduledAt), "full")) +
+        frow(
+          fld("Scheduled date & time" + (r.scheduledAt ? " — set: " + esc(fmtDate(r.scheduledAt)) : " (not scheduled yet)"), dtLocalInp("scheduledAt", r.scheduledAt), "full")
+        ) +
         frow(
           fld("Trip charge",
             inp("onsiteTripCharge", r.onsiteTripCharge) +
