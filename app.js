@@ -33,7 +33,7 @@ window.RT_ageTier = function (iso) {
 
   // Build stamp — check the browser console. If you don't see this exact line,
   // the browser/Cloudflare is serving a CACHED old app.js and the fix isn't live.
-  try { console.log("RepairTracker build: 2026-07-02 linda-margin v9 ✅"); } catch (e) {}
+  try { console.log("RepairTracker build: 2026-07-02 margin-completed v10 ✅"); } catch (e) {}
 
   // ---------- Shop info ----------
   var SHOP = {
@@ -1753,10 +1753,13 @@ window.RT_ageTier = function (iso) {
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
       }
-      // Admin-only: quick job-margin popup (cost/profit breakdown). Shown only
-      // on the stages where costs are being entered / finalized — Diagnosed,
-      // In Repair, and Ready for Pickup. Hidden from everyone except admins.
-      var showMargin = (r.status === "Diagnosed" || r.status === "In Repair" || r.status === "Ready for Pickup");
+      // Quick job-margin popup (cost/profit breakdown). Shown where costs are
+      // being entered / finalized (Diagnosed, In Repair, Ready for Pickup) AND
+      // on every finished job — the Completed tab is the most important place to
+      // check what you actually made. Gated to admins + the margin-email list.
+      var showMargin = (r.status === "Diagnosed" || r.status === "In Repair" ||
+                        r.status === "Ready for Pickup" || r.status === "Picked Up" ||
+                        r.status === "Completed" || !isActive);
       if (canSeeMargin() && r.id && showMargin) {
         var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
         mbtn.addEventListener("click", function (ev) {
