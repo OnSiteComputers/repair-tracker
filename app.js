@@ -33,7 +33,7 @@ window.RT_ageTier = function (iso) {
 
   // Build stamp — check the browser console. If you don't see this exact line,
   // the browser/Cloudflare is serving a CACHED old app.js and the fix isn't live.
-  try { console.log("RepairTracker build: 2026-07-02 margin-fix v6 ✅"); } catch (e) {}
+  try { console.log("RepairTracker build: 2026-07-02 status-row v7 ✅"); } catch (e) {}
 
   // ---------- Shop info ----------
   var SHOP = {
@@ -2479,12 +2479,13 @@ window.RT_ageTier = function (iso) {
       , "Repair") +
       section("Problem & status",
         frow(fld("Problem reported", ta("problem", r.problem, 2), "full")) +
-        frow(
-          '<div data-repair-only="1" style="flex:1 1 140px">' +
-          fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>") +
-          '</div>' +
-          '<div id="statusFieldWrap" style="flex:1 1 140px">' + statusField(r) + '</div>'
-        ) +
+        // Status on its own full-width row so it always renders, for every job
+        // type — it used to share a flex row with the repair-only Intake field,
+        // which could collapse/clip it when that field was hidden.
+        '<div id="statusFieldWrap">' + frow(statusField(r)) + '</div>' +
+        '<div data-repair-only="1">' +
+        frow(fld("Intake type", '<select data-k="intakeType"><option value="">—</option>' + opt(INTAKE_TYPES, r.intakeType) + "</select>")) +
+        '</div>' +
         '<div data-repair-only="1">' +
         frow(
           fld("Waiting on parts", sel("waitingOnParts", YESNO, r.waitingOnParts))
@@ -2891,7 +2892,7 @@ window.RT_ageTier = function (iso) {
       if (list.indexOf(r.status) === -1) r.status = list[0];
       var wrap = document.getElementById("statusFieldWrap");
       if (wrap) {
-        wrap.innerHTML = statusField(r);
+        wrap.innerHTML = frow(statusField(r));
         var newSel = wrap.querySelector('[data-k="status"]');
         if (newSel) {
           newSel.addEventListener("change", function () { r.status = newSel.value; });
@@ -2941,12 +2942,12 @@ window.RT_ageTier = function (iso) {
       return fld("Current status",
         '<select data-k="status">' + list.map(function (o) {
           return '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>";
-        }).join("") + "</select>");
+        }).join("") + "</select>", "full");
     }
     return fld("Current status (managers & admins only)",
       '<select data-k="status" disabled>' + list.map(function (o) {
         return '<option' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>";
-      }).join("") + "</select>");
+      }).join("") + "</select>", "full");
   }
 
   function sel(k, list, v) {
