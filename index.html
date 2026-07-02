@@ -462,6 +462,22 @@ td.cdate.age-green, td.cdate.age-yellow, td.cdate.age-red{font-weight:600}
 .lbl-tagline{font-size:11px; font-style:italic; color:#E07B39; margin:1px 0 5px}
 .lbl-line{font-size:11px; color:#444; line-height:1.5}
 .lbl-owner{font-size:12px; font-weight:600; color:#0B0B0C; margin-top:5px}
+
+/* Detail-panel status changer */
+.rd-status{padding:6px 9px; font-size:14px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); min-width:150px}
+.rd-status:disabled{opacity:.65; cursor:default; background:#F2F0EA}
+
+/* Scheduled date sub-line in the row date cell */
+.csub.sched{color:var(--navy,#1A2E5A); font-weight:600; margin-top:2px; white-space:nowrap}
+
+/* Admin-only job-margin popup — reuses .overlay for the backdrop */
+.marginpop{background:#fff; border-radius:14px; width:100%; max-width:440px; box-shadow:0 24px 70px rgba(0,0,0,.35); overflow:hidden; margin:auto}
+.marginpop .mp-head{display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid var(--line); background:#FAF8F3}
+.marginpop .mp-title{font-family:'Playfair Display',Georgia,serif; font-size:19px; font-weight:700; color:var(--ink); flex:1 1 auto}
+.marginpop .mp-sub{font-size:12px; color:var(--muted); flex:1 1 100%; order:3; margin-top:-4px}
+.marginpop .mp-body{padding:18px 20px 22px}
+.marginpop .mp-totals .trow{font-size:14px}
+.marginpop .x{margin-left:auto}
 </style>
 </head>
 <body>

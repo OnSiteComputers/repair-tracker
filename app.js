@@ -573,6 +573,7 @@ window.RT_ageTier = function (iso) {
     isAdmin: false,       // admin: can move job status + manage users
     role: "full",         // resolved role from user_roles table: admin | full | read-only
     onAdminPage: false,   // true while the Manage Users screen is open (suppresses auto-refresh)
+    openRows: {},         // ticket id -> true while its detail row is expanded (survives auto-refresh repaints)
   };
 
   // The admin can move jobs through statuses AND manage users.
@@ -1377,6 +1378,22 @@ window.RT_ageTier = function (iso) {
 
     // sort by the chosen column + direction; id breaks ties consistently
     var dir = state.dateSortDir === "asc" ? -1 : 1;
+    // On the Remote and On-Site tabs, upcoming scheduled visits are what matter,
+    // so sort by scheduledAt soonest-first (tickets with no schedule sink below).
+    if (isRemoteView || isOnsiteView) {
+      rows.sort(function (a, b) {
+        var as = (a.scheduledAt || "").trim(), bs = (b.scheduledAt || "").trim();
+        if (as && bs) {
+          var c = as.localeCompare(bs);            // ascending = soonest first
+          if (c !== 0) return c;
+          return String(a.id || "").localeCompare(String(b.id || ""));
+        }
+        if (as && !bs) return -1;                   // scheduled ones first
+        if (!as && bs) return 1;
+        // neither scheduled: fall back to newest checked-in
+        return (b.dateCheckedIn || "").localeCompare(a.dateCheckedIn || "");
+      });
+    } else
     rows.sort(function (a, b) {
       var c;
       if (state.sortKey === "name") {
@@ -1488,7 +1505,10 @@ window.RT_ageTier = function (iso) {
       var tierCls = tier ? (" age-" + tier) : "";
       var tr = el(
         "<tr" + (hasDetail ? ' class="rowexp"' : "") + ">" +
-          '<td class="cdate' + tierCls + '">' + esc(fmtDate(r.dateCheckedIn)) + "</td>" +
+          '<td class="cdate' + tierCls + '">' + esc(fmtDate(r.dateCheckedIn)) +
+            (((r.jobType === "Remote Support" || r.jobType === "On-Site Service") && r.scheduledAt && String(r.scheduledAt).trim())
+              ? '<div class="csub sched">📅 ' + esc(fmtDate(r.scheduledAt)) + "</div>" : "") +
+            "</td>" +
           "<td class=\"ccust" + tierCls + "\"><div class=\"cust\">" + esc(r.customerName || "—") +
             (hasDetail ? ' <span class="rcaret">▾</span>' : "") +
             '</div><div class="csub">' + esc(r.phone) + "</div></td>" +
@@ -1508,13 +1528,30 @@ window.RT_ageTier = function (iso) {
       var acts = tr.querySelector(".acts");
       acts.addEventListener("click", function (e) { e.stopPropagation(); });
 
-      // Row click expands a detail row (findings + est. cost); pencil edits.
+      // Row click expands a detail row. The detail row now also carries a
+      // status changer (all job types) and a Log-a-call note box. Open state is
+      // remembered in state.openRows so the auto-refresh can't collapse it.
       var detailRow = null;
       if (hasDetail) {
-        tr.addEventListener("click", function () {
-          if (detailRow) { detailRow.remove(); detailRow = null; tr.classList.remove("open"); return; }
-          tr.classList.add("open");
+        // Build (or rebuild) the detail row for this ticket. Self-contained so
+        // it can be called on click AND on auto-reopen after a repaint.
+        var buildDetail = function () {
+          var M = window.__RT.mgmt;
+          var canStatus = M && M.canChangeStatus && M.canChangeStatus();
+          var stList = R.statusesForJob(r.jobType);
+          var stCur = r.status;
+          if (stList.indexOf(stCur) === -1) stCur = stList[0];
+
           var cells =
+            // Status changer — same control/logic for Repair, Remote, On-Site.
+            '<div class="rd-row"><span class="rd-l">Status</span><div class="rd-v">' +
+              '<select class="rd-status" data-rdstatus' + (canStatus ? "" : " disabled") + '>' +
+                stList.map(function (o) {
+                  return '<option' + (o === stCur ? " selected" : "") + ">" + esc(o) + "</option>";
+                }).join("") +
+              "</select>" +
+              (canStatus ? "" : ' <span class="csub">(managers &amp; admins only)</span>') +
+            "</div></div>" +
             (r.diagnosticFindings && r.diagnosticFindings.trim()
               ? '<div class="rd-row"><span class="rd-l">Our Diagnosis</span><div class="rd-v">' + esc(r.diagnosticFindings) + "</div></div>" : "") +
             (r.estimatedCost && String(r.estimatedCost).trim()
@@ -1527,7 +1564,7 @@ window.RT_ageTier = function (iso) {
             (r.trackerNotes && r.trackerNotes.trim()
               ? '<div class="rd-row"><span class="rd-l">Notes</span><div class="rd-v">' + esc(r.trackerNotes) + "</div></div>" : "") +
             (r.callNotes && r.callNotes.trim()
-              ? '<div class="rd-row"><span class="rd-l">Call notes</span><div class="rd-v">' + esc(r.callNotes) + "</div></div>" : "") +
+              ? '<div class="rd-row"><span class="rd-l">Call notes so far</span><div class="rd-v">' + esc(r.callNotes) + "</div></div>" : "") +
             (r.lastEditedBy && r.lastEditedBy.trim()
               ? '<div class="rd-row"><span class="rd-l">Last edited by</span><div class="rd-v">' + esc(r.lastEditedBy) +
                 (r.lastEditedAt ? " · " + esc(fmtDate(r.lastEditedAt)) : "") + "</div></div>" : "") +
@@ -1541,14 +1578,38 @@ window.RT_ageTier = function (iso) {
                     : '<button type="button" class="sd-callsave" data-marknotif>Mark customer notified</button>') +
                 "</div></div>"
               : "") +
+            // Log a call / add a note — appends to call_notes with a stamp.
+            '<div class="rd-row"><span class="rd-l">Log a call / add a note</span><div class="rd-v">' +
+              '<textarea class="sd-callbox" data-callbox rows="2" placeholder="What was discussed with the customer..."></textarea>' +
+              '<button type="button" class="sd-callsave" data-callsave>Save note</button>' +
+            "</div></div>" +
             "";
-          detailRow = el('<tr class="detailrow"><td colspan="' + (showTypeCol ? 8 : 7) + '"><div class="rd-wrap">' + cells + "</div></td></tr>");
-          tr.parentNode.insertBefore(detailRow, tr.nextSibling);
-          // wire the "Mark customer notified" / "Clear" buttons
+          var dr = el('<tr class="detailrow"><td colspan="' + (showTypeCol ? 8 : 7) + '"><div class="rd-wrap">' + cells + "</div></td></tr>");
+          // clicks inside the detail row must not bubble up and toggle it closed
+          dr.addEventListener("click", function (e) { e.stopPropagation(); });
+
+          // Status changer — saves immediately on change.
           (function () {
-            var markBtn = detailRow.querySelector("[data-marknotif]");
-            var clearBtn = detailRow.querySelector("[data-clearnotif]");
-            var M = window.__RT.mgmt;
+            var sSel = dr.querySelector("[data-rdstatus]");
+            if (!sSel || !canStatus) return;
+            sSel.addEventListener("change", function (ev) {
+              ev.stopPropagation();
+              var newStatus = sSel.value;
+              sSel.disabled = true;
+              M.saveRepair({ id: r.id, status: newStatus }).then(function () {
+                r.status = newStatus;
+                loadAndRender();
+              }).catch(function (e2) {
+                sSel.disabled = false;
+                console.error("status change:", e2);
+              });
+            });
+          })();
+
+          // Mark customer notified / Clear
+          (function () {
+            var markBtn = dr.querySelector("[data-marknotif]");
+            var clearBtn = dr.querySelector("[data-clearnotif]");
             if (markBtn) {
               markBtn.addEventListener("click", function (ev) {
                 ev.stopPropagation();
@@ -1577,49 +1638,108 @@ window.RT_ageTier = function (iso) {
               });
             }
           })();
+
+          // Log-a-call note box — appends (with timestamp) to call_notes.
+          (function () {
+            var box = dr.querySelector("[data-callbox]");
+            var saveBtn = dr.querySelector("[data-callsave]");
+            if (!box || !saveBtn) return;
+            box.addEventListener("click", function (e) { e.stopPropagation(); });
+            saveBtn.addEventListener("click", function (e) {
+              e.stopPropagation();
+              var txt = (box.value || "").trim();
+              if (!txt) return;
+              var stamp = fmtDate(new Date().toISOString());
+              var who = (M.currentUser && M.currentUser()) ? M.currentUser().split("@")[0] : "front desk";
+              var entry = "[" + stamp + " · " + who + "] " + txt;
+              var combined = (r.callNotes && r.callNotes.trim())
+                ? (r.callNotes.trim() + "\n" + entry) : entry;
+              saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+              M.saveRepair({ id: r.id, callNotes: combined }).then(function () {
+                r.callNotes = combined;
+                box.value = "";
+                saveBtn.disabled = false; saveBtn.textContent = "Saved ✓";
+                loadAndRender();
+              }).catch(function (err) {
+                saveBtn.disabled = false; saveBtn.textContent = "Save note";
+                console.error("call note save:", err);
+              });
+            });
+          })();
+
+          return dr;
+        };
+
+        // If this row was open before a repaint, re-expand it now.
+        if (r.id && state.openRows[r.id]) {
+          tr.classList.add("open");
+          detailRow = buildDetail();
+          tr.parentNode.insertBefore(detailRow, tr.nextSibling);
+        }
+
+        tr.addEventListener("click", function () {
+          if (detailRow) {
+            detailRow.remove(); detailRow = null; tr.classList.remove("open");
+            if (r.id) delete state.openRows[r.id];
+            return;
+          }
+          tr.classList.add("open");
+          if (r.id) state.openRows[r.id] = true;
+          detailRow = buildDetail();
+          tr.parentNode.insertBefore(detailRow, tr.nextSibling);
         });
       }
-      // change-history button — fully self-contained so it can't depend on
-      // cross-IIFE wiring. Queries Supabase directly and shows any error inline.
-      if (r.id) {
-        var hbtn = el('<button class="ibtn" title="View change history">🕘</button>');
-        hbtn.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          openHistory(r);
-        });
-        acts.appendChild(hbtn);
-      }
-      // one-click Quote button (repair-type jobs only; remote/on-site don't quote)
-      if (r.jobType !== "Remote Support" && r.jobType !== "On-Site Service") {
-        var qbtn = el('<button class="ibtn" title="Print Quote">📝</button>');
-        qbtn.addEventListener("click", function () { openDoc(r, "Quote"); });
-        acts.appendChild(qbtn);
-        var dbtn = el('<button class="ibtn" title="Print Diagnostic Receipt">🩺</button>');
-        dbtn.addEventListener("click", function () { openDoc(r, "Diagnostic Receipt"); });
-        acts.appendChild(dbtn);
-      }
-      // one-click receipt button
+      // Row action buttons. History (🕘) has been removed from every row.
+      // Print buttons are limited by job type + status so staff can't misfire a
+      // wrong/$0 document:
+      //   Repair · Checked In        -> Service Order
+      //   Repair · Diagnosed         -> Quote + Diagnostic Receipt
+      //   Repair · Ready for Pickup  -> Final Receipt
+      //   Repair · other statuses    -> (no print button)
+      //   Remote / On-Site           -> their own receipt
       if (r.jobType === "Remote Support") {
-        // remote jobs are paid up front — receipt always available
         var rrcpt = el('<button class="ibtn" title="Print Remote Support Receipt">🧾</button>');
         rrcpt.addEventListener("click", function () { openDoc(r, "Remote Support Receipt"); });
         acts.appendChild(rrcpt);
       } else if (r.jobType === "On-Site Service") {
-        // on-site jobs — receipt always available
         var orcpt = el('<button class="ibtn" title="Print On-Site Service Receipt">🧾</button>');
         orcpt.addEventListener("click", function () { openDoc(r, "On-Site Service Receipt"); });
         acts.appendChild(orcpt);
-      } else if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
-        // one-click Final Receipt — only once the job is ready, so no $0 misfires
-        var rcpt = el('<button class="ibtn" title="Print Sales Receipt">🧾</button>');
-        rcpt.addEventListener("click", function () { openDoc(r, "Final Receipt"); });
-        acts.appendChild(rcpt);
+      } else {
+        // Repair-type job — buttons depend on status
+        if (r.status === "Checked In") {
+          var sobtn = el('<button class="ibtn" title="Print Service Order">📄</button>');
+          sobtn.addEventListener("click", function () { openDoc(r, "Service Order"); });
+          acts.appendChild(sobtn);
+        } else if (r.status === "Diagnosed") {
+          var qbtn = el('<button class="ibtn" title="Print Quote">📝</button>');
+          qbtn.addEventListener("click", function () { openDoc(r, "Quote"); });
+          acts.appendChild(qbtn);
+          var dbtn = el('<button class="ibtn" title="Print Diagnostic Receipt">🩺</button>');
+          dbtn.addEventListener("click", function () { openDoc(r, "Diagnostic Receipt"); });
+          acts.appendChild(dbtn);
+        } else if (r.status === "Ready for Pickup" || r.status === "Picked Up") {
+          var rcpt = el('<button class="ibtn" title="Print Final Receipt">🧾</button>');
+          rcpt.addEventListener("click", function () { openDoc(r, "Final Receipt"); });
+          acts.appendChild(rcpt);
+        }
+        // Diagnosing / Waiting on Parts / In Repair -> no print button (edit only)
       }
       // restore to active (for accidental Picked Up, or archived jobs) — not for remote/on-site
       if (!isActive && !isRemoteView && !isOnsiteView) {
         var rb = el('<button class="ibtn" title="Send back to active">↩</button>');
         rb.addEventListener("click", function () { restoreJob(r); });
         acts.appendChild(rb);
+      }
+      // Admin-only: quick job-margin popup (cost/profit breakdown). Hidden from
+      // everyone except admins; opens a popup that closes on an outside click.
+      if (state.isAdmin && r.id) {
+        var mbtn = el('<button class="ibtn" title="Job margin (admin only)">💰</button>');
+        mbtn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          openMarginPopup(r);
+        });
+        acts.appendChild(mbtn);
       }
       var eb = el('<button class="ibtn" title="Edit">✎</button>');
       eb.addEventListener("click", function () { openForm(r); });
@@ -2290,8 +2410,8 @@ window.RT_ageTier = function (iso) {
     seedDropdownDefaults(r);
     var isNew = !r.id;
     var overlay = el('<div class="overlay"></div>');
-    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); });
-
+    // The edit form must NOT close on an outside click — too easy to lose a
+    // half-filled ticket. Close only via the ✕ (top-right), Cancel, or Save.
     var modal = el('<div class="modal"></div>');
     modal.addEventListener("mousedown", function (e) { e.stopPropagation(); });
 
@@ -2861,6 +2981,79 @@ window.RT_ageTier = function (iso) {
       "</svg>" +
       '<div class="pie-legend">' + legend + "</div>" +
     "</div>";
+  }
+
+  // Admin-only margin popup — surfaces the same cost/profit breakdown that lives
+  // inside the edit form, as a quick standalone popup from the row actions.
+  // Reuses computeTotals/computeRemote/computeOnsite + marginPie so the math and
+  // the donut never drift from the form. Closes on outside click (unlike the form).
+  function openMarginPopup(r) {
+    if (!state.isAdmin) return; // hard gate — non-admins can't open it at all
+    var jt = r.jobType || "Repair";
+    var rows = "", pie = "";
+    if (jt === "Remote Support") {
+      var rm = R.computeRemote(r);
+      rows =
+        trow("Remote support (" + rm.rateLabel + " · " + rm.hours + " hr × " + money(rm.rate) + ")", money(rm.subtotal)) +
+        trow("Sales tax (7%)", money(rm.tax)) +
+        trow("Remote total", money(rm.total), true);
+      // remote is flat-rate; margin is essentially the whole labor line
+      pie = "";
+    } else if (jt === "On-Site Service") {
+      var os = R.computeOnsite(r);
+      rows =
+        trow("Trip charge", money(os.trip)) +
+        trow("Labor (" + os.hours + " hr × " + money(os.hourly) + ")", money(os.labor));
+      if (os.parts > 0) {
+        rows += trow("Parts cost", money(os.parts)) +
+          trow("Parts billed (+" + os.markupPct + "%" + (os.markupSource === "override" ? " override" : "") + ")", money(os.markedParts));
+      }
+      rows +=
+        trow("Subtotal", money(os.subtotal)) +
+        trow("Sales tax (7%)", money(os.tax)) +
+        trow("On-site total", money(os.total), true);
+      pie = marginPie([
+        { label: "Parts cost", value: os.parts, color: "#9aa0a6" },
+        { label: "Parts margin", value: os.partsMargin, color: "#C8A85A" },
+        { label: "Labor", value: os.labor, color: "#1A2E5A" },
+        { label: "Trip charge", value: os.trip, color: "#E07B39" },
+        { label: "Sales tax", value: os.tax, color: "#7A8CA3" },
+      ], "Total", os.total, { label: "Job margin", value: os.jobMargin });
+    } else {
+      var t = computeTotals(r);
+      rows =
+        trow("Parts cost", money(t.parts)) +
+        trow("Parts billed (+" + t.markupPct + "%" + (t.markupSource === "override" ? " override" : "") + ")", money(t.markedParts)) +
+        trow("Labor", money(t.labor));
+      if (t.expedite > 0) rows += trow("Expedite fee", money(t.expedite));
+      rows +=
+        trow("Subtotal", money(t.plSubtotal)) +
+        trow("Sales tax (7%)", money(t.plTax)) +
+        trow("Total due", money(t.finalDue), true);
+      pie = marginPie([
+        { label: "Parts cost", value: t.parts, color: "#9aa0a6" },
+        { label: "Parts margin", value: t.partsMargin, color: "#C8A85A" },
+        { label: "Labor", value: t.labor, color: "#1A2E5A" },
+        { label: "Expedite", value: t.expedite, color: "#E07B39" },
+        { label: "Sales tax", value: t.plTax, color: "#7A8CA3" },
+      ], "Total", t.plWithTax, { label: "Job margin", value: t.jobMargin });
+    }
+
+    var overlay = el('<div class="overlay"></div>');
+    var box = el('<div class="marginpop"></div>');
+    box.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+    box.innerHTML =
+      '<div class="mp-head"><div class="mp-title">Job margin — admin only</div>' +
+        '<div class="mp-sub">' + esc(r.customerName || "—") + " · " + esc(jt) + "</div>" +
+        '<button class="x" data-mpx>✕</button></div>' +
+      '<div class="mp-body"><div class="mp-totals">' + rows + "</div>" + pie + "</div>";
+    overlay.appendChild(box);
+    function close() { document.removeEventListener("keydown", onEsc); overlay.remove(); }
+    function onEsc(e) { if (e.key === "Escape") close(); }
+    overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); }); // outside click closes
+    box.querySelector("[data-mpx]").addEventListener("click", close);
+    document.addEventListener("keydown", onEsc);
+    document.body.appendChild(overlay);
   }
 
   // ---------------- Document generator ----------------
